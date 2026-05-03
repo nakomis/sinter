@@ -1,0 +1,17 @@
+#!/bin/bash
+
+FILES=$(git diff --cached --name-status)
+
+if [[ $FILES =~ .drawio ]]; then
+    echo
+    echo --- Auto-generating SVG files for architecture diagrams ---
+    for DRAWIO_FILE in $(git diff --cached --name-only | grep '\.drawio$'); do
+        SVG_FILE="${DRAWIO_FILE%.drawio}.svg"
+        echo "Exporting ${DRAWIO_FILE} → ${SVG_FILE}"
+        /Applications/draw.io.app/Contents/MacOS/draw.io -x "${DRAWIO_FILE}" -f svg -s 1 "${SVG_FILE}"
+        git add "${SVG_FILE}"
+    done
+    echo
+fi
+
+exit 0

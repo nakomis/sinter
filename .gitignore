@@ -53,3 +53,24 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Planning
+PLAN.md
+
+# Build outputs
+build/
+dist/
+*.bin
+
+# GOWIN FPGA toolchain
+impl/
+pnr/
+
+# ESP-IDF
+sdkconfig.old
+dependencies.lock
+managed_components/
+
+# Coverage
+coverage/
+lcov.info
