@@ -1,0 +1,149 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Sinter — target architecture">
+    <mxGraphModel dx="1400" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Sinter — agentic compute rig (target architecture)" style="text;html=1;align=center;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="200" y="0" width="700" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Inputs (red) -->
+        <mxCell id="pseudo" value="Natural-language&#xa;pseudocode" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="60" y="60" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cam" value="ESP32-S3-CAM&#xa;(vision input)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="260" y="60" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- External LLM (red, dashed border to mark external) -->
+        <mxCell id="bedrock" value="AWS Bedrock&#xa;(Mistral Large 3 /&#xa;Claude Opus)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;dashed=1;fontSize=11;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="800" y="60" width="180" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Orchestrator (blue) -->
+        <mxCell id="esp32" value="ESP32&#xa;(orchestrator,&#xa;Forth→x86-64 compiler)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="440" y="200" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Co-processors of the ESP32 -->
+        <mxCell id="atecc" value="ATECC608B&#xa;(SHA-256 over I²C)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="180" y="200" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="nvs" value="NVS / flash cache&#xa;(hash → compiled Forth)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="180" y="290" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- FPGA fabric (green) -->
+        <mxCell id="fpga" value="Tang Primer 20K FPGA&#xa;(SPI slave, DDR3 controller,&#xa;PCIe endpoint)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="440" y="380" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Shared DDR3 (yellow) -->
+        <mxCell id="ddr3" value="DDR3 SO-DIMM&#xa;(shared memory fabric)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="740" y="395" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Phenom II (blue) -->
+        <mxCell id="phenom" value="Phenom II X4 965&#xa;(bare-metal x86-64&#xa;execution engine)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="440" y="560" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Storage / output (red) -->
+        <mxCell id="disk" value="SATA disk&#xa;(results / reference files)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="440" y="730" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Inputs into ESP32 -->
+        <mxCell id="e_pseudo" style="endArrow=classic;html=1;strokeColor=#b85450" edge="1" parent="1" source="pseudo" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_cam" style="endArrow=classic;html=1;strokeColor=#b85450" edge="1" parent="1" source="cam" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ESP32 <-> ATECC608B -->
+        <mxCell id="e_esp_atecc" style="endArrow=classic;startArrow=classic;html=1;strokeColor=#6c8ebf" edge="1" parent="1" source="esp32" target="atecc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_esp_atecc_lbl" value="I²C" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="385" y="220" width="40" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ESP32 <-> NVS cache -->
+        <mxCell id="e_esp_nvs" style="endArrow=classic;startArrow=classic;html=1;strokeColor=#6c8ebf" edge="1" parent="1" source="esp32" target="nvs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ESP32 <-> Bedrock (dashed: network / cloud, miss path) -->
+        <mxCell id="e_esp_bedrock" style="endArrow=classic;startArrow=classic;html=1;dashed=1;strokeColor=#b85450" edge="1" parent="1" source="esp32" target="bedrock">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_esp_bedrock_lbl" value="HTTPS&#xa;(on cache miss)" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="665" y="135" width="130" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ESP32 -> FPGA -->
+        <mxCell id="e_esp_fpga" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#6c8ebf" edge="1" parent="1" source="esp32" target="fpga">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_esp_fpga_lbl" value="SPI&#xa;(write compiled binary)" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="490" y="305" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- FPGA <-> DDR3 -->
+        <mxCell id="e_fpga_ddr" style="endArrow=classic;startArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="fpga" target="ddr3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fpga_ddr_lbl" value="DDR3 bus" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="665" y="365" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- FPGA <-> Phenom (PCIe) -->
+        <mxCell id="e_fpga_phenom" style="endArrow=classic;startArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#82b366" edge="1" parent="1" source="fpga" target="phenom">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fpga_phenom_lbl" value="PCIe DMA&#xa;(Phenom reads binary,&#xa;writes results)" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="660" y="485" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Phenom -> disk -->
+        <mxCell id="e_phenom_disk" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#6c8ebf" edge="1" parent="1" source="phenom" target="disk">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_phenom_disk_lbl" value="SATA" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="490" y="675" width="60" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Validation loop (ESP32 reads back results) -->
+        <mxCell id="e_loop" style="endArrow=classic;html=1;dashed=1;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=1;entryY=0.5" edge="1" parent="1" source="disk" target="esp32">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="980" y="760" />
+              <mxPoint x="980" y="245" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_loop_lbl" value="validate vs reference;&#xa;retry on failure" style="text;html=1;align=center;fontSize=10;fontStyle=2;fontColor=#b85450" vertex="1" parent="1">
+          <mxGeometry x="820" y="490" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" value="Legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;fontSize=10;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4" vertex="1" parent="1">
+          <mxGeometry x="60" y="850" width="320" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_blue"   value="compute engine"        style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10" vertex="1" parent="1"><mxGeometry x="75"  y="880" width="120" height="22" as="geometry" /></mxCell>
+        <mxCell id="lg_green"  value="bridge / fabric"       style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10" vertex="1" parent="1"><mxGeometry x="75"  y="908" width="120" height="22" as="geometry" /></mxCell>
+        <mxCell id="lg_yellow" value="memory / cache"        style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10" vertex="1" parent="1"><mxGeometry x="210" y="880" width="120" height="22" as="geometry" /></mxCell>
+        <mxCell id="lg_red"    value="I/O / external / leaf" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="210" y="908" width="120" height="22" as="geometry" /></mxCell>
+        <mxCell id="lg_dashed" value="dashed = external / control-loop edge" style="text;html=1;align=left;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="75" y="938" width="280" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
