@@ -5,61 +5,104 @@ MSR cheat-sheet, x86 cache/ordering primitives table). Pasted into the
 conversation as plain text; preserved verbatim below for traceability.
 
 **Status: not folded into the distilled notes.** Same reason as
-`-followup.md` — written before SINT-34 / `lspci` / FPGA are in hand. Two
-specific concerns when this is eventually mined for the kernel work:
+`-followup.md` — written before SINT-34 / `lspci` / FPGA are in hand.
 
-## ⚠ The worked MTRR example in §2.8 contains arithmetic errors
+**A meta-note on the corrections below.** The original framing of this
+file's preamble said "Copilot got these MSR values wrong, here are the
+right ones". That framing was itself overconfident: every "correction"
+below is produced by the same kind of LLM that produced the original
+answer. Internal consistency and confident prose are not evidence of
+correctness in either direction. The chain of trust at this level of the
+project ends only outside the LLM — at the AMD64 Architecture Programmer's
+Manual, the Linux kernel source for known-good K10 implementations, or
+`rdmsr` on the real chip. The sections below have been reframed as
+"disputed; needs verification" rather than "wrong; corrected". Specific
+concerns when this is eventually mined for the kernel work:
 
-The bit-layout descriptions earlier in §2 are correct, but the worked example
-that follows them is wrong in two reinforcing ways. Anyone following the
-example verbatim would program the wrong physical address into the MTRR.
+## ⚠ The worked MTRR example in §2.8 — disputed; needs verification
 
-For a 16 MiB UC region at physical `0xF0000000` on a 36-bit phys-addr K10:
+The bit-layout descriptions earlier in §2 read consistently with the AMD64
+APM Vol 2 §7.7 ("Memory-Range Registers") format as I understand it, but
+the worked example that follows them produces numbers that disagree with a
+re-derivation from the same layout. Both want independent verification
+before any kernel code uses them — this is bit-level firmware territory
+where "looks plausible" is not good enough, and both Copilot and the
+re-derivation here come from the same class of LLM and could be confidently
+wrong in the same way.
 
-| Field | Copilot's value | Correct value |
-|---|---|---|
-| `IA32_MTRRphysBase0` (full MSR value) | `0x00000000_000F0000` | `0x00000000_F0000000` |
-| `IA32_MTRRphysMask0` (full MSR value) | `0x00000000_000FF800` | `0x0000000F_FF000800` |
+For a 16 MiB UC region at physical `0xF0000000`:
 
-Two compounding errors:
+| Field | Copilot | Re-derivation here | Authoritative source |
+|---|---|---|---|
+| `IA32_MTRRphysBase0` | `0x00000000_000F0000` | `0x00000000_F0000000` | AMD64 APM Vol 2 §7.7 + `arch/x86/kernel/cpu/mtrr/generic.c` |
+| `IA32_MTRRphysMask0` | `0x00000000_000FF800` | `0x0000000F_FF000800` | Same |
 
-1. **MSR value vs field value.** The base/mask fields live at MSR bit
-   positions `[PA-1:12]`. The MSR's bit 12 corresponds to phys-addr bit 12 —
-   so the *field value* `BASE >> 12` must be **placed back** at bit position
-   12 in the final 64-bit MSR write, not written out as the low bits. The
-   correct base value is the physical address itself (`0xF0000000`) with
-   `TYPE` in the low 8 bits.
-2. **32-bit arithmetic on a 36-bit phys-addr.** `~0x00FFFFFF` is `0xFF000000`
-   in 32-bit C, but should be `0xFFF000000` in 36-bit phys-addr math. So
-   the mask field has one fewer `F` than it should, and the region ends up
-   covering 256 MiB rather than 16 MiB *if* the bit-position error above is
-   independently corrected.
+The re-derivation reasoning, shown in full so it can be checked:
 
-The recipe to get this right by hand:
+`PhysBase` lives at MSR bits `[PhysAddrSize-1:12]`; MSR bit *N* corresponds
+to phys-addr bit *N* for *N* ≥ 12. The only set bits in `0xF0000000` are at
+positions 28–31, which fall within `[12, 35]`, so they go directly into the
+MSR at the same bit positions. The 64-bit result is `0xF << 28` = the
+physical address itself: `0x00000000_F0000000`. `TYPE = 0` (UC) in
+bits `[7:0]` adds zero.
 
-```
-PhysBase MSR value = (BASE & PhysAddrMask) | TYPE
-                   = 0xF0000000 | 0x00  = 0x00000000_F0000000
+`PhysMask` of a 16 MiB (2²⁴) region aligned to 16 MiB has the upper
+`(PhysAddrSize - 24)` phys-addr bits set. Assuming `PhysAddrSize = 36`,
+that's 12 bits, at positions 24–35: `0xFFF << 24 = 0xFFF000000`. With the
+valid bit V at position 11 (`0x800`), the 64-bit result is
+`0x0000000F_FF000800`.
 
-PhysMask MSR value = (~(SIZE - 1) & PhysAddrMask) | V_BIT
-                   = (~(0x01000000 - 1) & 0xFFFFFFFFF) | 0x800
-                   = 0x0000000F_FF000000 | 0x800
-                   = 0x0000000F_FF000800
-```
+**Two specific places this derivation could itself be wrong:**
 
-Where `PhysAddrMask` is `(1 << PhysAddrSize) - 1` — verify the actual
-`PhysAddrSize` from CPUID 0x80000008 on the real chip; K10 is commonly 40
-bits for the C0/C3 steppings, which would extend the mask further left
-again. Don't trust the "36" assumption without checking.
+1. **`PhysAddrSize` is assumed 36 above and 36 in Copilot's example.** K10
+   C0/C3 steppings commonly expose 40 bits. The ground truth is
+   `CPUID.80000008h:EAX[7:0]` on the actual chip. If it's 40, the
+   re-derivation's mask shifts left another 4 hex digits and becomes
+   `0x000000FF_FF000800`. The phys-addr-size assumption is a *parameter*
+   of the answer, not a fact.
+2. **The MTRR bit layout itself.** Both this re-derivation and Copilot
+   read the layout the same way (`[7:0]` TYPE, `[11:8]` reserved,
+   `[PA-1:12]` PhysBase, V at bit 11 of the mask). If that reading is
+   wrong, both are wrong in the same way.
 
-## ⚠ The "compute the effective memory type" advice in §1.6/§1.15
+**How to actually settle this when SINT-39 starts:**
 
-The MTRR/PAT effective-type computation is genuinely subtle: when MTRR and
-PAT disagree, AMD's combining rules apply, and they're *not* a straight
-"strictest wins" — UC + WB combines to UC, but WC + WB combines to *WC*, not
-WB. Implementing your own "compute effective type" helper as Copilot
-suggests is the right *idea* but needs the actual K10 combining table, not
-intuition. Reference: AMD64 APM Vol 2, "Combined Memory Types" section.
+- Read the value back. Write a `dump_mtrrs` kernel helper that does
+  `rdmsr` on `0x200`/`0x201` after the write, and prints the value. The
+  silicon is the only authority.
+- Cross-reference against
+  [`arch/x86/kernel/cpu/mtrr/generic.c`](https://elixir.bootlin.com/linux/latest/source/arch/x86/kernel/cpu/mtrr/generic.c)
+  in the Linux source — it has been correctly programming MTRRs on real
+  K10 silicon since the platform shipped.
+- Run a UC-vs-WB read-latency test on the same physical address with and
+  without the MTRR active. UC reads are dramatically slower than WB
+  reads; if the latency doesn't change after programming, the MTRR isn't
+  taking effect on that region.
+
+**The honest framing of this section:** Copilot's worked numbers and the
+re-derivation here disagree. The re-derivation is *defensible against the
+AMD64 APM as I understand it*, but I (Claude) am the same kind of system
+that produced Copilot's confident-but-wrong-looking answer, and I have no
+way to independently verify my own bit-arithmetic. Treat both as
+hypotheses; the only thing that resolves them is `rdmsr` on the real chip
+or a comparison against Linux source on a known-good implementation.
+
+## ⚠ The "compute the effective memory type" advice in §1.6/§1.15 — also needs primary source
+
+Copilot's advice to compute the effective memory type by hand is the right
+*idea*, but the combining rules are subtle and the claim "strictest wins"
+is at best a simplification. I previously asserted in chat that "WC + WB
+combines to WC, not WB" as a counter-example to the simplification —
+**this assertion is from memory and not currently independently verified**.
+The combining table is real (AMD64 APM Vol 2, "Combined Memory Types"
+section) and the general shape (UC always wins over cacheable; WC has
+special handling) is well-established. The specific cell values want
+checking against the actual table before they end up in kernel logic.
+
+Practically: if SINT-39 ever needs an "effective memory type" helper,
+transcribe AMD's table directly from the PDF and unit-test the helper
+against every row. Do not implement it from intuition or from chat
+recollection.
 
 ## What's worth folding in *after* reality has voted
 
