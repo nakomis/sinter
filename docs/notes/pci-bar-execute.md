@@ -69,6 +69,13 @@ Implications:
   - `BAR + 0x000`: control / status registers (UC).
   - `BAR + 0x1000`: code region (UC, page-aligned).
   - `BAR + 0x2000`: scratch / result region (UC or WC depending on use).
+- **Fill the tail of the code region with `UD2` (`0F 0B`) as a guard.**
+  `UD2` is the architecturally-guaranteed invalid opcode — it raises `#UD`
+  (invalid opcode exception) reliably. The BAR's hardware address decode
+  prevents fetches *past* the BAR, but speculative prefetch *inside* the
+  BAR past the end of the injected code is fair game. Padding with `UD2`
+  turns "wandered off the end" from "executes random garbage" into "clean
+  trap the kernel can catch and report".
 
 ## 3. Status-register handshake
 
@@ -95,6 +102,34 @@ The "status last" ordering matters: any other write order can have the
 Phenom jump while the code is still being filled. The FPGA's PCI target
 core should guarantee write ordering within a single requester (which the
 ESP32 effectively is, behind the FPGA).
+
+### Alternative: double-buffered code regions (A/B)
+
+Once the single-buffer handshake above is solid, the natural upgrade is
+A/B double-buffering, which lets the ESP32 prepare the *next* code block
+while the Phenom is still running the *previous* one:
+
+| Offset             | Meaning                                                |
+|--------------------|--------------------------------------------------------|
+| `BAR + 0x00`       | Active region: `0` = A, `1` = B. Phenom polls this.    |
+| `BAR + 0x04`       | A: sequence number (incremented when A is fresh).      |
+| `BAR + 0x08`       | B: sequence number (incremented when B is fresh).      |
+| `BAR + 0x1000`     | Code region A (UC, page-aligned).                      |
+| `BAR + 0x2000`     | Code region B (UC, page-aligned).                      |
+
+Workflow:
+
+1. ESP32 picks the *inactive* region (the one Phenom isn't running).
+2. ESP32 writes code into it, then increments that region's sequence
+   number.
+3. ESP32 flips the active-region word.
+4. Phenom finishes whatever it's running, reads the active-region word,
+   reads the corresponding sequence number, and only jumps if the
+   sequence number is stable across two reads (catches mid-flux).
+
+This eliminates the "Phenom stalls during code reload" problem and gives
+you a built-in sanity check via the sequence numbers. Worth doing once
+the basic XIP works, not before.
 
 ### CPU-side serialisation before the jump
 

@@ -96,10 +96,34 @@ never gets stable VCC and can't respond.
 This doesn't change the agreed plan (desolder), but it adds an objective
 data point: if VCC is rock-solid 3.3 V and the chip *still* refuses to
 respond, the contention is on the SPI lines (MISO most likely) rather
-than on power, and the **MISO pin-2 lift** in `pci-bar-execute.md`'s
-sibling context — *no, wrong file* — covered in the BIOS readme is the
-right intermediate step. If VCC is collapsing, lifting MISO won't help and
-desolder is the only path.
+than on power, and a pin-lift is the right intermediate step. If VCC is
+collapsing, lifting a pin won't help and desolder is the only path.
+
+### Which pin to lift: MISO vs /CS
+
+Two distinct ways to break the chipset's control over the in-circuit
+flash without removing it:
+
+- **Lift pin 2 (MISO / DO)** — disconnects the chipset's *input* from the
+  bus. The chip still hears the chipset's clock and CS toggling, but its
+  output goes only to whatever the clip is wired to. Most direct fix for
+  "JEDEC ID reads return garbage" since MISO is the contended line in the
+  classic failure mode.
+- **Lift pin 1 (/CS)** — disconnects the chipset's *addressing* of the
+  chip. The chipset can no longer select it; only the clip can. Wider
+  isolation than MISO-only (the chip is now invisible to the chipset for
+  every signal), at the cost of needing to drive /CS from the clip too.
+  A bit safer in that the chip can't be accidentally addressed by stray
+  chipset activity.
+- **Cut the /CS trace and bodge-wire it back later** — permanent
+  equivalent of the /CS lift, useful if a clean pin-lift fails. Records
+  a literal scar on the board.
+
+The clean default is **MISO lift** when the failure mode is "no JEDEC ID";
+**/CS lift** is the slightly stronger isolation if MISO lift still
+returns garbage (suggests the chipset is also asserting CS at wrong
+moments). Pads on this vintage of Gigabyte board lift easily — go in with
+flux, magnification, and a fine tip.
 
 ## 5. Recovery from a bad flash
 
