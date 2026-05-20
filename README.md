@@ -38,9 +38,7 @@ sinter/
 For reference, the textbook early-2000s Intel desktop block diagram looks like
 this:
 
-![Generic early-2000s motherboard block diagram](https://upload.wikimedia.org/wikipedia/commons/0/00/Motherboard_diagram.svg)
-
-*Image courtesy of [Moxfyre, Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Motherboard_diagram.svg) — CC BY-SA 3.0.*
+![Generic early-2000s motherboard block diagram](docs/architecture/motherboard-block-diagram.svg)
 
 CPU on a front-side bus to a **northbridge** (MCH) that owns RAM and AGP/PCIe×16,
 then a **southbridge** (ICH) hanging off it that fans out to PCI, USB, SATA/IDE,
@@ -66,25 +64,7 @@ Two project-specific extras the generic diagram doesn't show:
 - **DualBIOS.** There are **two** flash chips on that SPI bus plus a small
   selector (the "DualBIOS controller").
 
-```mermaid
-flowchart LR
-    DIMMs[DDR3 DIMMs]
-    CPU["Phenom II X4 965<br/>(on-die DDR3 IMC)"]
-    Chipset["nForce 630a / MCP68<br/>(single chip:<br/>GeForce 7025 iGPU,<br/>PCIe root, PCI, USB,<br/>SATA, LAN, HDA, LPC,<br/>SPI master)"]
-    VGA[VGA out]
-    Periph[PCIe x16 / PCI / USB / SATA / LAN / HDA / LPC]
-    Sel[DualBIOS<br/>selector]
-    M[M_BIOS<br/>MX25L1605E]
-    B[B_BIOS<br/>MX25L1605E]
-
-    DIMMs --- CPU
-    CPU <-- HyperTransport --> Chipset
-    Chipset --> VGA
-    Chipset --> Periph
-    Chipset -- SPI --> Sel
-    Sel --> M
-    Sel --> B
-```
+![GA-M68MT-S2 block diagram](docs/architecture/ga-m68mt-s2-block-diagram.svg)
 
 ## Hardware
 
