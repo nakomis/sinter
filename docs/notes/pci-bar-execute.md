@@ -273,7 +273,58 @@ nForce-era footguns. Treat as "things to look for", not "confirmed bugs":
 
 Each step is independently testable; don't conflate them.
 
-## 10. What this file is *not*
+## 10. Cross-LLM consultation, 2026-05-20 (Cabal MCP first run)
+
+Ran the design past the Cabal MCP (Bedrock Mistral / Llama / Nova, Azure
+Grok 4.3, Gemini 3 Pro — gpt-5.4-pro pending Azure quota). Raw replies in
+`docs/notes/research/20260520-171539Z-sinter-mcp-cabal-first-run-*.md`.
+
+**Prompt-framing failure to flag (apply the "verify the question, not just
+the answer" principle from `multi-llm-consultation.md`):** my Cabal prompt
+asked about **PCIe x1 Gen1**. The actual design uses **legacy 32-bit /
+33 MHz PCI** (see §6). The Tang Primer 20K *cannot* drive PCIe Gen1
+(no SerDes, fabric can't hit 2.5 GT/s) — every model agreed on that — but
+it *can* drive legacy PCI in soft logic, which is what the design assumes.
+None of the five models caught that I was asking the wrong question, even
+under the "be blunt, flag malformed questions" framing. So the "PCIe x1
+infeasible" consensus is correct-but-irrelevant for this project.
+
+Bits that **do** apply once you re-read the responses with PCI 32/33 in
+mind:
+
+- **Bootstrap dependency (Gemini, unique).** The x86 reset vector points
+  to BIOS ROM, not the FPGA BAR. You need a BIOS + a host kernel (or
+  custom firmware) running on the Phenom *before* anything can enumerate
+  the PCI bus, assign the BAR, and jump to its contents. §9 already
+  starts with "boot a Linux live USB", but make this explicit: there is
+  no path where the FPGA owns first instruction fetch. The Phenom *must*
+  boot something else first.
+
+- **W^X discipline as the safe pattern (Gemini).** Real JITs and module
+  loaders write code into a non-executable mapping, fence, flush, *then*
+  flip permissions and jump. Our handshake (§3) does the equivalent with
+  the status word — keep it that way; don't relax it.
+
+- **No CPU snoop path for instruction fetch (Grok, single-sentence
+  framing).** Reinforces §1's UC argument: PCI devices never participate
+  in MESI, so the only way to keep the I-cache honest is to bypass it
+  entirely. Already covered; Grok said it more pithily than this file
+  does.
+
+- **Cache-mode disagreement across models is real, not noise.** Mistral
+  said WB, Llama said WT/UC, Nova said UC/WC, Grok said WB-or-WT, Gemini
+  said UC. Only Grok and Gemini explained *why*, and they reach opposite
+  conclusions (Grok: WB needed for atomic cache-line fills; Gemini: UC
+  needed because no coherency). Our existing §1 picks UC and explains
+  why; the cabal didn't shift that. But worth verifying against AMD's
+  BKDG before treating it as settled — none of the five models is an
+  authoritative source on K10-family cache semantics.
+
+Cost of the consultation: $0.021 USD. Five voices, written to disk, in
+~45 seconds. Pattern is repeatable — see `multi-llm-consultation.md` for
+when to reach for it.
+
+## 11. What this file is *not*
 
 This is a design-notes file, not a spec. None of it has been verified on
 silicon — the rig is still blocked on getting a verified BIOS dump
