@@ -33,6 +33,36 @@ sinter/
     architecture/   # draw.io source and generated SVGs
 ```
 
+## GA-M68MT-S2 Board Architecture
+
+The host board is an AMD/AM3 design, which differs from the textbook early-2000s
+Intel block diagram in three important ways: the DDR3 memory controller lives
+**on the CPU** (not in a northbridge); the CPU talks to the chipset over
+**HyperTransport** rather than an FSB; and the **nForce 630a / MCP68 is a single
+chip** that integrates the GeForce 7025 iGPU, PCIe root, PCI, USB, SATA, LAN,
+HD Audio, LPC and SPI master. The board also carries Gigabyte **DualBIOS** —
+two SPI flash chips on the same bus behind a small selector.
+
+```mermaid
+flowchart LR
+    DIMMs[DDR3 DIMMs]
+    CPU["Phenom II X4 965<br/>(on-die DDR3 IMC)"]
+    Chipset["nForce 630a / MCP68<br/>(single chip:<br/>GeForce 7025 iGPU,<br/>PCIe root, PCI, USB,<br/>SATA, LAN, HDA, LPC,<br/>SPI master)"]
+    VGA[VGA out]
+    Periph[PCIe x16 / PCI / USB / SATA / LAN / HDA / LPC]
+    Sel[DualBIOS<br/>selector]
+    M[M_BIOS<br/>MX25L1605E]
+    B[B_BIOS<br/>MX25L1605E]
+
+    DIMMs --- CPU
+    CPU <-- HyperTransport --> Chipset
+    Chipset --> VGA
+    Chipset --> Periph
+    Chipset -- SPI --> Sel
+    Sel --> M
+    Sel --> B
+```
+
 ## Hardware
 
 | Component | Role |
