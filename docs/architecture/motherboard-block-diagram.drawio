@@ -1,0 +1,74 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Generic early-2000s motherboard">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="cpu" value="CPU" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="340" y="40" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="north" value="Northbridge&#xa;(MCH)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="340" y="180" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ram" value="RAM&#xa;(DDR/DDR2 DIMMs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="120" y="190" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="agp" value="AGP / PCIe x16&#xa;(graphics)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="560" y="190" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="south" value="Southbridge&#xa;(ICH)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="340" y="340" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pci"   value="PCI slots"           style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="40"  y="490" width="110" height="40" as="geometry" /></mxCell>
+        <mxCell id="usb"   value="USB"                 style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="170" y="490" width="110" height="40" as="geometry" /></mxCell>
+        <mxCell id="sata"  value="SATA / IDE"          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="300" y="490" width="110" height="40" as="geometry" /></mxCell>
+        <mxCell id="audio" value="HD Audio"            style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="430" y="490" width="110" height="40" as="geometry" /></mxCell>
+        <mxCell id="lan"   value="LAN (Ethernet)"      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="560" y="490" width="110" height="40" as="geometry" /></mxCell>
+        <mxCell id="sio"   value="Super I/O&#xa;(PS/2, serial, parallel, floppy)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="170" y="560" width="240" height="50" as="geometry" /></mxCell>
+        <mxCell id="bios"  value="BIOS flash&#xa;(LPC)"  style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="430" y="560" width="140" height="50" as="geometry" /></mxCell>
+
+        <mxCell id="e_cpu_north" style="endArrow=classic;startArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#6c8ebf;fontSize=10" edge="1" parent="1" source="cpu" target="north">
+          <mxGeometry relative="1" as="geometry" />
+          <mxCell value="FSB" />
+        </mxCell>
+        <mxCell id="e_cpu_north_lbl" value="FSB" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="395" y="115" width="40" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_north_ram" style="endArrow=classic;startArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="north" target="ram">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_north_agp" style="endArrow=classic;startArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="north" target="agp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_north_south" style="endArrow=classic;startArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="north" target="south">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_north_south_lbl" value="DMI / hub link" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="375" y="275" width="100" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_south_pci"   style="endArrow=classic;html=1;strokeColor=#b85450" edge="1" parent="1" source="south" target="pci"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_south_usb"   style="endArrow=classic;html=1;strokeColor=#b85450" edge="1" parent="1" source="south" target="usb"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_south_sata"  style="endArrow=classic;html=1;strokeColor=#b85450" edge="1" parent="1" source="south" target="sata"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_south_audio" style="endArrow=classic;html=1;strokeColor=#b85450" edge="1" parent="1" source="south" target="audio"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_south_lan"   style="endArrow=classic;html=1;strokeColor=#b85450" edge="1" parent="1" source="south" target="lan"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_south_sio"   style="endArrow=classic;html=1;strokeColor=#b85450" edge="1" parent="1" source="south" target="sio"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_south_bios"  style="endArrow=classic;html=1;strokeColor=#b85450" edge="1" parent="1" source="south" target="bios"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="title" value="Generic early-2000s Intel desktop block diagram" style="text;html=1;align=center;fontSize=13;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="200" y="0" width="420" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
