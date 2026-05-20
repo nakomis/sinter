@@ -96,7 +96,54 @@ Phenom jump while the code is still being filled. The FPGA's PCI target
 core should guarantee write ordering within a single requester (which the
 ESP32 effectively is, behind the FPGA).
 
-## 4. Executing in-place vs. copy-then-jump
+### CPU-side serialisation before the jump
+
+Even with UC mapping and the status-last handshake, the Phenom's front-end
+will have speculatively prefetched and predecoded instructions around the
+polling loop. Before calling into the freshly-written code, drain the
+pipeline explicitly:
+
+```asm
+    mfence              ; finish any pending loads/stores
+    cpuid               ; cpuid is a serialising instruction — flushes
+                        ;   the front-end and re-fetches downstream of
+                        ;   this point
+    call    [bar_code]  ; jump to BAR + 0x1000
+```
+
+`cpuid` is the canonical serialising instruction on x86 — it guarantees
+that everything before it is complete and everything after it is freshly
+fetched. `mfence` alone is *not* enough for instruction-stream serialisation
+(it orders memory operations, not the front-end). Don't reach for `invd` —
+it invalidates without write-back and is a footgun if anything else in the
+kernel is using cacheable memory at the time. `wbinvd` (write-back +
+invalidate) is the safe equivalent if you actually need to drop cache lines,
+but on a properly UC-mapped BAR you don't.
+
+## 4. PCI posted-write readback fences
+
+NVIDIA nForce-era chipsets are infamously aggressive about buffering MMIO
+writes. When the Phenom writes a value back to the FPGA — say, a "done"
+status or a result word — the chipset may hold that write in an internal
+buffer rather than letting it traverse the bus immediately. The ESP32
+polling the FPGA from the other side will see *nothing* until something
+forces the buffer to flush.
+
+The standard idiom: **immediately read back the same MMIO address** after
+the write. The read can't be satisfied from the write buffer, so it forces
+the buffered write out first.
+
+```c
+*((volatile uint32_t *)(bar + STATUS)) = STATE_DONE;
+(void)*((volatile uint32_t *)(bar + STATUS));   /* readback fence */
+```
+
+This matters most for the Phenom → FPGA direction (status updates, command
+acknowledgements, result bytes). FPGA → Phenom writes from the ESP32 don't
+have the same problem because they originate outside the chipset's posted-
+write buffers.
+
+## 5. Executing in-place vs. copy-then-jump
 
 The poetry of the project is "Phenom executes code served directly by the
 FPGA". The deterministic alternative is "Phenom `memcpy`s the code into
@@ -113,11 +160,19 @@ For early bring-up, copy-then-jump is the right tool — it isolates "does the
 PCI link work" from "does in-place execution work". Once that's solid,
 move to in-place and keep copy-then-jump as the fallback path.
 
-## 5. Realistic PCI bandwidth
+## 6. Realistic PCI bandwidth
 
 Legacy 32-bit / 33 MHz PCI peaks at **133 MB/s theoretical**. In practice
-~80–110 MB/s sustained burst is typical, less for small individual reads
-(address phase + turnaround overhead).
+**~50–90 MB/s sustained** for code-fetch-style reads from a BAR (small,
+latency-sensitive, not very burst-friendly), rising to ~80–110 MB/s for
+large bulk DMA reads where the chipset can burst freely. Individual reads
+pay an address phase + turnaround cycle, so tight polling loops that read
+one word at a time will land at the low end.
+
+FPGA-side DDR3 throughput (~133 MB/s on the Tang Primer 20K's onboard
+chip) is irrelevant to this number — PCI is the bottleneck. Expect
+instruction fetch latency from the BAR to dwarf system RAM by an order of
+magnitude or more.
 
 This is plenty for the workloads in the README — pi digits, Mandelbrot,
 prime sieves are compute-bound on the Phenom II, not link-bound. A
@@ -126,7 +181,7 @@ ever wants to stream tens of MB/s of *code* from the FPGA, the project
 will have outgrown PCI and want either PCIe (different FPGA) or a
 copy-then-jump model with system RAM as the working set.
 
-## 6. PCI device discovery
+## 7. PCI device discovery
 
 The FPGA's PCI target core must respond to configuration-space reads with
 a real Vendor/Device ID. Two options:
@@ -142,7 +197,31 @@ MCP68 device IDs sourced from any LLM without first running `lspci -nn`
 on the actual board from a Linux live USB and saving the output to this
 repo — the IDs hallucinate freely and rev 1.3 vs 3.1 may differ.
 
-## 7. Order of bring-up (suggested)
+## 8. MCP68 / nForce-era quirks the kernel needs to know about
+
+Captured from cross-referenced LLM assessments (ChatGPT, Grok) of common
+nForce-era footguns. Treat as "things to look for", not "confirmed bugs":
+
+- **ACPI tables are ugly.** Linux carries piles of nForce quirks in its ACPI
+  parser. Don't trust MADT / HPET / SCI routing without booting Linux on the
+  same board first and comparing to your own parser's output.
+- **NVIDIA SATA quirks** — NCQ bugs, DMA timeout oddities. Bring storage up
+  in **legacy IDE mode** (BIOS setting) and stick to PIO before adding
+  DMA. AHCI on nForce is famously more painful than on Intel.
+- **GeForce 7025 iGPU MMIO is undocumented.** If we ever drive the
+  framebuffer directly rather than via VESA/VBE, expect reverse-engineering
+  via the nouveau source. For now: VESA linear framebuffer is fine and free.
+- **Power management / clocking** — C-state and P-state transitions while
+  the kernel doesn't know how to handle them can cause apparently-spontaneous
+  hangs. Mask them in MSRs early during bring-up; revisit when stable.
+- **Interrupt routing** — APIC layout is mostly standard but with NVIDIA
+  tweaks. Use the **8259 PIC** for the first milestones; move to IOAPIC /
+  LAPIC / MSI only when the rest is solid.
+- **Documentation is poor.** Datasheets aren't public for the MCP series.
+  Authoritative sources are: Linux kernel sources, `pci.ids`,
+  `lspci -vv` / config-space dumps from the real board.
+
+## 9. Order of bring-up (suggested)
 
 1. Tang Primer 20K + ESP32 over SPI, no AM3 board involved. ESP32 can
    read/write FPGA DDR3 end-to-end. *(SINT-FPGA-01-ish.)*
@@ -159,7 +238,7 @@ repo — the IDs hallucinate freely and rev 1.3 vs 3.1 may differ.
 
 Each step is independently testable; don't conflate them.
 
-## 8. What this file is *not*
+## 10. What this file is *not*
 
 This is a design-notes file, not a spec. None of it has been verified on
 silicon — the rig is still blocked on getting a verified BIOS dump
