@@ -64,25 +64,7 @@ Two project-specific extras the generic diagram doesn't show:
 - **DualBIOS.** There are **two** flash chips on that SPI bus plus a small
   selector (the "DualBIOS controller").
 
-```mermaid
-flowchart LR
-    DIMMs[DDR3 DIMMs]
-    CPU["Phenom II X4 965<br/>(on-die DDR3 IMC)"]
-    Chipset["nForce 630a / MCP68<br/>(single chip:<br/>GeForce 7025 iGPU,<br/>PCIe root, PCI, USB,<br/>SATA, LAN, HDA, LPC,<br/>SPI master)"]
-    VGA[VGA out]
-    Periph[PCIe x16 / PCI / USB / SATA / LAN / HDA / LPC]
-    Sel[DualBIOS<br/>selector]
-    M[M_BIOS<br/>MX25L1605E]
-    B[B_BIOS<br/>MX25L1605E]
-
-    DIMMs --- CPU
-    CPU <-- HyperTransport --> Chipset
-    Chipset --> VGA
-    Chipset --> Periph
-    Chipset -- SPI --> Sel
-    Sel --> M
-    Sel --> B
-```
+![GA-M68MT-S2 block diagram](docs/architecture/ga-m68mt-s2-block-diagram.svg)
 
 ## Hardware
 

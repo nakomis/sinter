@@ -1,0 +1,86 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="GA-M68MT-S2 block diagram">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="GA-M68MT-S2 (Phenom II AM3 + nForce 630a) block diagram" style="text;html=1;align=center;fontSize=13;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="120" y="0" width="600" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cpu" value="Phenom II X4 965&#xa;(on-die DDR3 IMC)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="340" y="40" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ram" value="DDR3 DIMMs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="120" y="50" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="chipset" value="nForce 630a / MCP68&#xa;(single chip:&#xa;GeForce 7025 iGPU,&#xa;PCIe root, PCI, USB,&#xa;SATA, LAN, HDA, LPC,&#xa;SPI master)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="320" y="220" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vga" value="VGA out" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="620" y="260" width="120" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pcie"  value="PCIe x16"   style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="40"  y="430" width="110" height="40" as="geometry" /></mxCell>
+        <mxCell id="pci"   value="PCI"        style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="160" y="430" width="100" height="40" as="geometry" /></mxCell>
+        <mxCell id="usb"   value="USB"        style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="270" y="430" width="100" height="40" as="geometry" /></mxCell>
+        <mxCell id="sata"  value="SATA"       style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="380" y="430" width="100" height="40" as="geometry" /></mxCell>
+        <mxCell id="lan"   value="LAN"        style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="490" y="430" width="100" height="40" as="geometry" /></mxCell>
+        <mxCell id="hda"   value="HD Audio"   style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="600" y="430" width="100" height="40" as="geometry" /></mxCell>
+        <mxCell id="lpc"   value="LPC&#xa;(Super I/O)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1"><mxGeometry x="710" y="430" width="110" height="40" as="geometry" /></mxCell>
+
+        <mxCell id="sel" value="DualBIOS&#xa;selector" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="370" y="560" width="120" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mbios" value="M_BIOS&#xa;MX25L1605E" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="270" y="660" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="bbios" value="B_BIOS&#xa;MX25L1605E" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="450" y="660" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_cpu_ram" style="endArrow=classic;startArrow=classic;html=1;strokeColor=#6c8ebf" edge="1" parent="1" source="cpu" target="ram">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_cpu_ram_lbl" value="on-die&#xa;memory bus" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="265" y="20" width="90" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_cpu_chipset" style="endArrow=classic;startArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#6c8ebf" edge="1" parent="1" source="cpu" target="chipset">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_cpu_chipset_lbl" value="HyperTransport 3.0" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="370" y="150" width="120" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_chipset_vga" style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="chipset" target="vga">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_chipset_pcie" style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="chipset" target="pcie"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_chipset_pci"  style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="chipset" target="pci"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_chipset_usb"  style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="chipset" target="usb"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_chipset_sata" style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="chipset" target="sata"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_chipset_lan"  style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="chipset" target="lan"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_chipset_hda"  style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="chipset" target="hda"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_chipset_lpc"  style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="chipset" target="lpc"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e_chipset_sel" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#82b366" edge="1" parent="1" source="chipset" target="sel">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_chipset_sel_lbl" value="SPI" style="text;html=1;align=center;fontSize=10;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="395" y="520" width="40" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_sel_m" style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="sel" target="mbios"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_sel_b" style="endArrow=classic;html=1;strokeColor=#82b366" edge="1" parent="1" source="sel" target="bbios"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
