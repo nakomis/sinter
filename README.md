@@ -33,6 +33,59 @@ sinter/
     architecture/   # draw.io source and generated SVGs
 ```
 
+## GA-M68MT-S2 Board Architecture
+
+For reference, the textbook early-2000s Intel desktop block diagram looks like
+this:
+
+![Generic early-2000s motherboard block diagram](https://upload.wikimedia.org/wikipedia/commons/0/00/Motherboard_diagram.svg)
+
+*Image courtesy of [Moxfyre, Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Motherboard_diagram.svg) — CC BY-SA 3.0.*
+
+CPU on a front-side bus to a **northbridge** (MCH) that owns RAM and AGP/PCIe×16,
+then a **southbridge** (ICH) hanging off it that fans out to PCI, USB, SATA/IDE,
+audio, LAN, Super I/O (PS/2, serial, parallel, floppy) and the BIOS flash. Fast
+stuff close to the CPU, slow/legacy stuff one hop further out.
+
+The Sinter host board (Gigabyte GA-M68MT-S2, Phenom II AM3, nForce 630a /
+GeForce 7025) is **not** that picture. It differs in three important ways:
+
+1. **RAM doesn't go through the chipset.** AM3 CPUs have the DDR3 memory
+   controller **on-die**. The DIMM slots connect straight to the CPU.
+2. **No FSB — it's HyperTransport.** The CPU↔chipset link is a HyperTransport
+   3.0 point-to-point bus.
+3. **No separate north/southbridge — it's one chip.** The nForce 630a / MCP68
+   is a single-chip chipset: PCIe root, the integrated GeForce 7025 iGPU (the
+   VGA output), PCI, USB, SATA, LAN MAC, HD Audio, LPC and the SPI master all
+   in one package.
+
+Two project-specific extras the generic diagram doesn't show:
+
+- **BIOS is SPI, not LPC.** The MX25L1605E talks SPI to the chipset's SPI
+  master — which is why a serprog rig works at all.
+- **DualBIOS.** There are **two** flash chips on that SPI bus plus a small
+  selector (the "DualBIOS controller").
+
+```mermaid
+flowchart LR
+    DIMMs[DDR3 DIMMs]
+    CPU["Phenom II X4 965<br/>(on-die DDR3 IMC)"]
+    Chipset["nForce 630a / MCP68<br/>(single chip:<br/>GeForce 7025 iGPU,<br/>PCIe root, PCI, USB,<br/>SATA, LAN, HDA, LPC,<br/>SPI master)"]
+    VGA[VGA out]
+    Periph[PCIe x16 / PCI / USB / SATA / LAN / HDA / LPC]
+    Sel[DualBIOS<br/>selector]
+    M[M_BIOS<br/>MX25L1605E]
+    B[B_BIOS<br/>MX25L1605E]
+
+    DIMMs --- CPU
+    CPU <-- HyperTransport --> Chipset
+    Chipset --> VGA
+    Chipset --> Periph
+    Chipset -- SPI --> Sel
+    Sel --> M
+    Sel --> B
+```
+
 ## Hardware
 
 | Component | Role |
