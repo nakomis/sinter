@@ -38,7 +38,7 @@ sinter/
 For reference, the textbook early-2000s Intel desktop block diagram looks like
 this:
 
-![Generic early-2000s motherboard block diagram](https://upload.wikimedia.org/wikipedia/commons/0/00/Motherboard_diagram.svg)
+![Generic early-2000s motherboard block diagram](docs/motherboard-block-diagram.svg)
 
 *Image courtesy of [Moxfyre, Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Motherboard_diagram.svg) — CC BY-SA 3.0.*
 
