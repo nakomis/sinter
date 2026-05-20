@@ -35,13 +35,36 @@ sinter/
 
 ## GA-M68MT-S2 Board Architecture
 
-The host board is an AMD/AM3 design, which differs from the textbook early-2000s
-Intel block diagram in three important ways: the DDR3 memory controller lives
-**on the CPU** (not in a northbridge); the CPU talks to the chipset over
-**HyperTransport** rather than an FSB; and the **nForce 630a / MCP68 is a single
-chip** that integrates the GeForce 7025 iGPU, PCIe root, PCI, USB, SATA, LAN,
-HD Audio, LPC and SPI master. The board also carries Gigabyte **DualBIOS** —
-two SPI flash chips on the same bus behind a small selector.
+For reference, the textbook early-2000s Intel desktop block diagram looks like
+this:
+
+![Generic early-2000s motherboard block diagram](https://upload.wikimedia.org/wikipedia/commons/0/00/Motherboard_diagram.svg)
+
+*Image courtesy of [Moxfyre, Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Motherboard_diagram.svg) — CC BY-SA 3.0.*
+
+CPU on a front-side bus to a **northbridge** (MCH) that owns RAM and AGP/PCIe×16,
+then a **southbridge** (ICH) hanging off it that fans out to PCI, USB, SATA/IDE,
+audio, LAN, Super I/O (PS/2, serial, parallel, floppy) and the BIOS flash. Fast
+stuff close to the CPU, slow/legacy stuff one hop further out.
+
+The Sinter host board (Gigabyte GA-M68MT-S2, Phenom II AM3, nForce 630a /
+GeForce 7025) is **not** that picture. It differs in three important ways:
+
+1. **RAM doesn't go through the chipset.** AM3 CPUs have the DDR3 memory
+   controller **on-die**. The DIMM slots connect straight to the CPU.
+2. **No FSB — it's HyperTransport.** The CPU↔chipset link is a HyperTransport
+   3.0 point-to-point bus.
+3. **No separate north/southbridge — it's one chip.** The nForce 630a / MCP68
+   is a single-chip chipset: PCIe root, the integrated GeForce 7025 iGPU (the
+   VGA output), PCI, USB, SATA, LAN MAC, HD Audio, LPC and the SPI master all
+   in one package.
+
+Two project-specific extras the generic diagram doesn't show:
+
+- **BIOS is SPI, not LPC.** The MX25L1605E talks SPI to the chipset's SPI
+  master — which is why a serprog rig works at all.
+- **DualBIOS.** There are **two** flash chips on that SPI bus plus a small
+  selector (the "DualBIOS controller").
 
 ```mermaid
 flowchart LR
