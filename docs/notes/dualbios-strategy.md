@@ -38,15 +38,15 @@ bricked.
 
 ## 2. Workflow rules to follow without exception
 
-1. **Dump both M_BIOS and B_BIOS first**, out of circuit, triple-read +
-   sha256-verified. Two known-good dumps are the *only* recovery image; if
-   they differ, investigate before doing anything else. (This is what
-   `scripts/dump-verify.sh` in the bios-rw tree already does — see
-   `embedded/bios-rw/README.md`.)
+1. **Dump both M_BIOS and B_BIOS first**, triple-read + sha256-verified.
+   Two known-good dumps are the *only* recovery image; if they differ,
+   investigate before doing anything else. The two paths to a dump are
+   covered in §2a (try internal flashrom first) and §2b (clip / desolder
+   as the fallback for B_BIOS or if internal fails).
 2. **Keep B_BIOS pristine.** Never write anything experimental to B_BIOS
    until a candidate image has cleanly POSTed for multiple reboots in
    M_BIOS.
-3. **Treat the board as recoverable only via the external SPI programmer.**
+3. **For *writes*, treat the board as recoverable only via the external SPI programmer.**
    Don't rely on Gigabyte's Q-Flash, software flashers, or the in-board
    auto-recovery — those are precisely the systems we may have just
    confused.
@@ -55,6 +55,86 @@ bricked.
    bricking mode.
 5. **Always work on a copy of the dump**, never the verified original.
    Keep `m_bios.verified.bin` and `b_bios.verified.bin` immutable.
+
+## 2a. Dumping via `flashrom -p internal` (no soldering required)
+
+For a *read* of the currently-active chip (M_BIOS on a normal boot),
+`flashrom`'s `internal` programmer talks to the BIOS flash through the
+**chipset's own SPI master** — the same controller the MCP68 uses to boot
+the board. Run it from a Linux live USB on the board itself; no clip, no
+breadboard, no soldering iron. This should be the **first attempt** for
+SINT-34.
+
+```sh
+# Boot any modern Linux live USB on the GA-M68MT-S2.
+sudo apt install flashrom        # or dnf / pacman / xbps depending on distro
+sudo flashrom -p internal -V                          # probe & identify
+sudo flashrom -p internal -r dump1.bin
+sudo flashrom -p internal -r dump2.bin
+sudo flashrom -p internal -r dump3.bin
+sha256sum dump1.bin dump2.bin dump3.bin               # same triple-read discipline
+                                                      # as scripts/dump-verify.sh
+```
+
+Why this should work where the in-circuit clip failed:
+
+- **No bus contention.** The chipset is alive and *expected* to be the SPI
+  master; we're not asking the powered-down chipset to release the bus to
+  a clip. The clamping war that defeated the in-circuit clip attempts
+  simply doesn't happen.
+- **Same flashrom chip driver** as the clip path
+  (`MX25L1605A/MX25L1606E/MX25L1608E`) — once flashrom can reach the SPI
+  bus, it identifies and reads the Macronix chip identically.
+- **Read is non-destructive.** Worst case is "doesn't work, we still
+  haven't damaged anything"; the clip rig is the fallback either way.
+
+**The DualBIOS catch.** The MCP68 typically only exposes the
+**currently-active** chip on the SPI bus the running CPU can see — so
+internal flashrom reads M_BIOS, not B_BIOS, on a normal boot. To get
+B_BIOS without external hardware you would have to force DualBIOS to
+switch the active chip (commonly by deliberately corrupting M_BIOS and
+rebooting), which is exactly the failure mode SINT-34 is trying to *avoid*
+producing. So:
+
+- **For M_BIOS:** internal flashrom is the recommended first try.
+- **For B_BIOS:** the clip rig is still the right tool. Scope shrinks to
+  one chip rather than two.
+- **If `cmp m_bios b_bios` shows them identical** after internal flashrom
+  reads M_BIOS and the clip reads B_BIOS, a verified M_BIOS dump *is* a
+  verified B_BIOS dump. This is the common case on a board that has never
+  experienced a DualBIOS recovery event.
+
+**What could still go wrong with internal flashrom on this chipset**
+(treat each as "verify, don't assume"):
+
+- **Chipset write-protect lockdown.** Many boards set chipset-level
+  write-protect bits during POST that make the flash read-only from the
+  running OS. For a *read*, this doesn't matter. For a *write* (SINT-39),
+  this is one of several reasons internal flashrom isn't the recommended
+  write path. See §5a.
+- **nForce / MCP68 chipset support in current flashrom.** flashrom 1.7.0
+  on a recent Linux distro should support the MCP6x family; if it doesn't,
+  the probe in step 1 above will say so explicitly. If it fails to find
+  the chipset, fall back to the clip rig.
+- **Inconsistent reads.** Run the triple-read and sha256 check exactly
+  like `scripts/dump-verify.sh` does for the clip path. If the three
+  reads disagree, *don't trust the dump* — investigate before proceeding.
+
+## 2b. Dumping via the external SPI clip / desolder (the original SINT-34 plan)
+
+Still the right tool for:
+
+- **B_BIOS**, which internal flashrom can't see on a normal boot.
+- **Any case where internal flashrom doesn't work** (chipset not
+  recognised, inconsistent reads, write-protect getting in the way of
+  diagnostic flags).
+- **All of SINT-39's writes**, where the recovery story is "external
+  programmer with the verified dump" — internal flashrom is *not* the
+  write path even if it could write, because of the lockdown and
+  DualBIOS-interference issues in §5a.
+
+For the procedure see `embedded/bios-rw/README.md` and the in-circuit
+contention findings already in this document (§4, §5).
 
 ## 3. Isolating B_BIOS during experiments
 
@@ -142,6 +222,36 @@ If, despite the above, a custom M_BIOS bricks the board into a loop:
 The whole strategy depends on step 0 — the trusted dump — being **already
 in hand** before anything experimental happens. This is why SINT-34
 (getting a verified dump) gates everything else.
+
+## 5a. Why internal flashrom is *not* the recommended write path
+
+`flashrom -p internal -w` could in principle write the BIOS through the
+chipset's SPI master too, but for SINT-39 the external programmer is the
+right tool. Three reasons:
+
+1. **Chipset-level write-protect lockdown.** During POST, the running BIOS
+   typically sets chipset bits that make the SPI flash read-only from the
+   running OS. Defeating this requires either kernel options like
+   `iomem=relaxed`, flashrom flags like `--force`, and/or modifying the
+   early-BIOS path to leave the lock open — which is precisely the
+   chicken-and-egg problem SINT-39 is trying to break in the first place.
+2. **DualBIOS interference mid-experiment.** If a write through internal
+   flashrom produces an M_BIOS that doesn't reach POST-OK on the next
+   boot, the DualBIOS selector flips, B_BIOS becomes active, and the
+   board may copy B → M, silently overwriting your work. The external
+   programmer + physically-isolated B_BIOS (see §3) sidesteps both of
+   those failure modes.
+3. **Recovery still goes through the external rig anyway.** If the
+   internal write goes wrong and the board won't POST at all, the *only*
+   way back is the external SPI clip + the verified dump. So you need
+   the external rig as the safety net even if you never use it for the
+   happy path — which means the marginal value of also using internal
+   flashrom for the write is essentially zero.
+
+Internal flashrom for *writes* might become the right optimisation
+*after* you have a custom BIOS image that already POSTs reliably and
+you're just iterating quickly. Until then, the external programmer is
+the deliberate, controllable, recoverable path.
 
 ## 6. Things explicitly **not** to do
 
