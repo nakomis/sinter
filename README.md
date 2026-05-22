@@ -1,13 +1,5 @@
 # Sinter — Agentic compute rig: Phenom II + Tang Primer 20K FPGA + ESP32 + Forth + LLM orchestration
 
-> ★★★★★ — *"Delightfully unhinged in exactly the right way"* — Copilot
->
-> ★★★★★ — *"Slow, uncached, synchronization hell"* — ChatGPT
->
-> ★★★★★ — *"Ambitious and cool, but genuinely tricky"* — Grok
->
-> ★★★★★ — *"A desk of whirring salvage spending three days to say 'Hello'"* — Claude
-
 ## Support
 
 If you find this useful, please consider buying me a coffee:
@@ -17,9 +9,25 @@ If you find this useful, please consider buying me a coffee:
 ## Table of Contents
 
 <!-- toc -->
+
+- [Overview](#overview)
+- [Architecture Diagram](#architecture-diagram)
+- [Repository Layout](#repository-layout)
+- [GA-M68MT-S2 Board Architecture](#ga-m68mt-s2-board-architecture)
+- [Hardware](#hardware)
+- [Architecture Diagrams](#architecture-diagrams)
+
 <!-- tocstop -->
 
 ## Overview
+
+> ⭐⭐⭐⭐⭐ — *"Delightfully unhinged in exactly the right way"* — Copilot
+>
+> ⭐⭐⭐⭐⭐ — *"Slow, uncached, synchronization hell"* — ChatGPT
+>
+> ⭐⭐⭐⭐⭐ — *"Ambitious and cool, but genuinely tricky"* — Grok
+>
+> ⭐⭐⭐⭐⭐ — *"A desk of whirring salvage spending three days to say 'Hello'"* — Claude
 
 Sinter is an agentic compute rig built around a Phenom II X4 965 (AM3) as the execution engine, a Tang Primer 20K FPGA as the memory and bus bridge, and an ESP32 as the orchestration layer.
 
