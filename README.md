@@ -22,17 +22,17 @@ If you find this useful, please consider buying me a coffee:
 
 ## Overview
 
-> ⭐⭐⭐⭐⭐ — *"Delightfully unhinged in exactly the right way"* — Copilot
->
-> ⭐⭐⭐⭐⭐ — *"Slow, uncached, synchronization hell"* — ChatGPT
->
-> ⭐⭐⭐⭐⭐ — *"Ambitious and cool, but genuinely tricky"* — Grok
->
-> ⭐⭐⭐⭐⭐ — *"A desk of whirring salvage spending three days to say 'Hello'"* — Claude
-
 Sinter is an agentic compute rig built around a Phenom II X4 965 (AM3) as the execution engine, a Tang Primer 20K FPGA as the memory and bus bridge, and an ESP32 as the orchestration layer.
 
 The ESP32 accepts natural-language problem descriptions, sends them to a local LLM (via Ollama), receives Forth code in response, compiles it to x86-64, injects the binary into the Phenom II's DDR3 via the FPGA/PCIe bridge, executes it, validates the result, and iterates on failure.
+
+> ⭐⭐⭐⭐⭐ — *"Delightfully unhinged in exactly the right way"* — [Copilot](docs/notes/research/sinter-project-assessment-copilot.md)
+>
+> ⭐⭐⭐⭐⭐ — *"Slow, uncached, synchronization hell"* — [ChatGPT](docs/notes/research/sinter-project-assessment-chatgpt.md#direct-execution-from-bar)
+>
+> ⭐⭐⭐⭐⭐ — *"Ambitious and cool, but genuinely tricky"* — [Grok](docs/notes/research/sinter-project-assessment-grok.md#3-pci-bar-execute-in-place-architecture--high-risk-many-pitfalls)
+>
+> ⭐⭐⭐⭐⭐ — *"A desk of whirring salvage spending three days to say 'Hello'"* — Claude
 
 ## Architecture Diagram
 
