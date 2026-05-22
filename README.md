@@ -1,5 +1,13 @@
 # Sinter — Agentic compute rig: Phenom II + Tang Primer 20K FPGA + ESP32 + Forth + LLM orchestration
 
+> ★★★★★ — *"Delightfully unhinged in exactly the right way"* — Copilot
+>
+> ★★★★★ — *"Slow, uncached, synchronization hell"* — ChatGPT
+>
+> ★★★★★ — *"Ambitious and cool, but genuinely tricky"* — Grok
+>
+> ★★★★★ — *"A desk of whirring salvage spending three days to say 'Hello'"* — Claude
+
 ## Support
 
 If you find this useful, please consider buying me a coffee:
