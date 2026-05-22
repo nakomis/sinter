@@ -14,4 +14,15 @@ if [[ $FILES =~ .drawio ]]; then
     echo
 fi
 
+if [[ $FILES =~ README\.md ]]; then
+    echo
+    echo --- Updating table of contents in README files ---
+    for README_FILE in $(git diff --cached --name-only | grep 'README\.md$'); do
+        echo "Updating TOC in ${README_FILE}"
+        npx -y markdown-toc -i "${README_FILE}"
+        git add "${README_FILE}"
+    done
+    echo
+fi
+
 exit 0

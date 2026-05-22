@@ -1,4 +1,4 @@
-# Sinter — Agentic compute rig: Phenom II + Tang Primer 20K FPGA + ESP32 + Forth + LLM orchestration
+# Sinter — Combining hardware in cruel and unusual ways
 
 ## Support
 
@@ -16,6 +16,7 @@ If you find this useful, please consider buying me a coffee:
 - [GA-M68MT-S2 Board Architecture](#ga-m68mt-s2-board-architecture)
 - [Hardware](#hardware)
 - [Architecture Diagrams](#architecture-diagrams)
+- [Support](#support)
 
 <!-- tocstop -->
 
