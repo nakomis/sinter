@@ -57,6 +57,9 @@ dkms.conf
 # Planning
 PLAN.md
 
+# macOS
+.DS_Store
+
 # Build outputs
 build/
 dist/

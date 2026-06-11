@@ -44,4 +44,4 @@ git config core.hooksPath .githooks
 
 ## Taiga project
 
-Project prefix: SINT — `http://taiga.nakom.is`
+Project prefix: SINT — `https://taiga.home.nakomis.com`
