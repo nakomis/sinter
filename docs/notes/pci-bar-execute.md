@@ -11,8 +11,14 @@ directly out of the Tang Primer 20K FPGA's DDR3, mapped as a PCI memory-mapped
 BAR in one of the GA-M68MT-S2's two legacy 32-bit / 33 MHz PCI slots — with
 the ESP32 asynchronously updating the code in DDR3 while the Phenom polls a
 status word. This file is the running list of gotchas to design for; nothing
-here has been verified on the real rig yet (the BIOS dump in SINT-34 is the
-current blocker).
+here has been verified on the real rig yet.
+
+Note on blockers: SINT-34 (the BIOS dump) gates **SINT-39 only** — custom
+BIOS writes. It does *not* gate this execution path. Booting a stock Linux
+live USB, enumerating the FPGA card, and running the full agentic loop via
+a kernel module (SINT-95) touches the BIOS flash zero times; a misbehaving
+PCI target can hang POST but cannot corrupt the flash. The FPGA/PCI track
+and the BIOS track are parallel, not serial.
 
 ## 1. Cache coherency is *the* gotcha — mark the BAR Uncacheable
 
@@ -216,6 +222,39 @@ ever wants to stream tens of MB/s of *code* from the FPGA, the project
 will have outgrown PCI and want either PCIe (different FPGA) or a
 copy-then-jump model with system RAM as the working set.
 
+## 6a. Electrical reality: 5V PCI slots vs 3.3V FPGA I/O (SINT-93)
+
+**This could be a hard wall, and no LLM consultation volunteered it — it
+lives in the physical layer, below where they reason.**
+
+Desktop PCI slots of the GA-M68MT-S2's era are almost universally
+**5V-signalling** (5V-keyed slots — key towards the backplate end;
+3.3V-keyed slots have it towards the board centre). The Tang Primer 20K's
+GW2A I/O banks are LVCMOS33 and are **not 5V tolerant**:
+
+- Sustained 5V on the bus lines can damage the FPGA's input structures.
+- The classic "PCI 5V is really clamped transmission-line signalling"
+  argument relies on the clamp diodes the PCI spec assumes at every
+  agent — which the GW2A does not provide to spec.
+
+Real FPGA-on-PCI designs of this vintage solved it one of two ways:
+5V-tolerant parts (not an option here) or **quickswitch-class bus
+switches** (QS3245 / CBT3245 family) between the slot and the FPGA,
+which clamp the 5V swing to ~3.3V with sub-nanosecond propagation.
+
+Before the card-edge breakout (SINT-51) gets designed:
+
+1. **Verify the slot keying with eyes** on the actual board.
+2. **Measure the slot's `VI/O` pins with a multimeter** on the powered
+   board — the keying says what the slot *accepts*; `VI/O` says what the
+   chipset actually *drives*.
+3. Design the bus switches into the breakout, or rule them out with
+   recorded evidence.
+
+Per `verify-against-silicon.md`: everything in this section is
+"best current understanding" until those measurements exist. **Do not
+insert the Tang Primer into the PCI slot before SINT-93 is done.**
+
 ## 7. PCI device discovery
 
 The FPGA's PCI target core must respond to configuration-space reads with
@@ -231,6 +270,17 @@ chipset-presented buses) for the chosen IDs. **Don't** code against
 MCP68 device IDs sourced from any LLM without first running `lspci -nn`
 on the actual board from a Linux live USB and saving the output to this
 repo — the IDs hallucinate freely and rev 1.3 vs 3.1 may differ.
+
+### Don't write the PCI target core from scratch (SINT-94)
+
+A PCI target written from the spec means re-deriving config space,
+parity, retry/disconnect, and latency-timer corner cases — exactly the
+cases an nForce-era chipset will exercise aggressively. OpenCores has
+battle-tested 32/33 PCI target implementations (**pci32tlite** and
+friends) that have run on real silicon for years. Porting one to the
+GW2A is the same principle as cross-referencing MTRR code against the
+Linux source (`verify-against-silicon.md` level 4): battle-tested code
+beats confidently-worded prose, including our own.
 
 ## 8. MCP68 / nForce-era quirks the kernel needs to know about
 
@@ -272,6 +322,21 @@ nForce-era footguns. Treat as "things to look for", not "confirmed bugs":
    FPGA → BAR → execute → SATA disk → validation.
 
 Each step is independently testable; don't conflate them.
+
+### Linux first, bare metal second (SINT-95)
+
+Steps 3–6 should be proven **under stock Ubuntu with a small kernel
+module** (`/dev/sinter`: find the device, `ioremap_uc()` the BAR, run the
+§3 handshake, call the injected code) before any bare-metal or custom-BIOS
+work. This splits the debugging matrix: when something breaks under a
+stock kernel, it's the FPGA core or the handshake — not our bootloader,
+our MTRR code, or our interrupt routing. The ESP32 side is identical
+either way; it cannot tell what the Phenom is booting. Bare metal
+(SINT-41) stays as the ethos goal — it just isn't on the critical path
+for the loop.
+
+Note steps 1–6 never write the BIOS flash: none of this is blocked on
+SINT-34 (see the note at the top of this file).
 
 ## 10. Cross-LLM consultation, 2026-05-20 (Cabal MCP first run)
 
@@ -327,6 +392,6 @@ when to reach for it.
 ## 11. What this file is *not*
 
 This is a design-notes file, not a spec. None of it has been verified on
-silicon — the rig is still blocked on getting a verified BIOS dump
-(SINT-34). Treat every claim as "best current understanding"; revise as
-the actual hardware lies to us.
+silicon — the BIOS track is blocked on a verified dump (SINT-34) and the
+PCI track on the electrical verification (SINT-93). Treat every claim as
+"best current understanding"; revise as the actual hardware lies to us.
