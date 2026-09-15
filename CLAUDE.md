@@ -42,6 +42,6 @@ To activate the hook after cloning:
 git config core.hooksPath .githooks
 ```
 
-## Taiga project
+## Plane project
 
-Project prefix: SINT — `http://taiga.nakom.is`
+Project identifier: SINT — `https://plane.home.nakomis.com`
