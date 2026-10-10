@@ -137,8 +137,9 @@ synchronised with RP2350 cross-block IRQs (to verify — see Open items).
 
 - **ESP32:** 2×4 0.1" — SCK, MOSI, MISO, CS, READY, 3.3 V (reference), 5 V
   (can power the ESP32 board), GND.
-- **All-GPIO:** 2×25 0.1" — GPIO 0–47 interleaved with GND; the logic analyser
-  connection and hand-wiring escape hatch (all 3.3 V side).
+- **All-GPIO:** 2×25 0.1" — pins 1–48 = GPIO 0–47, pin 49 = 3.3 V, pin 50 = GND
+  (48 GPIOs leave no room to interleave grounds); the logic analyser connection
+  and hand-wiring escape hatch (all 3.3 V side).
 - **SWD:** JST-SH 3-pin + 0.1" pads.
 - **USB-C** on a short edge.
 
