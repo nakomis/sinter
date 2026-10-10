@@ -47,7 +47,7 @@ small. Decision after pricing; everything below describes option 2.
          ◄─► shared DQ/DQS bus ─┬─ lane 0 translator (fitted) ──┤
                                 ├─ lanes 1–7 (DNP) ─────────────┤ DDR3 DIMM socket
          ──► 74LVC138 ──────────┴─ per-lane OE# + DM ───────────┤
-         ◄─► I2C ── SPD EEPROM, TCA9534 expander (RESET#, VTT_EN, LED)
+         ◄─► I2C ── SPD EEPROM, PCA9534 expander (RESET#, VTT_EN, LED)
          ◄─► ESP32 header (SPI + READY)
          ◄─► SWD (JST-SH) + 2×25 all-GPIO header
 ```
@@ -127,7 +127,7 @@ PIO blocks see a 32-pin window based at GPIO 0 or GPIO 16.
 | 24–26 | BA0–BA2 | |
 | 27–40 | A0–A13 | A10 = AP |
 | 41 | READY | to ESP32 |
-| 42, 43 | I2C1 SDA, SCL | SPD (0x50), TCA9534; pull-ups to 3.3 V |
+| 42, 43 | I2C1 SDA, SCL | SPD (0x50), PCA9534; pull-ups to 3.3 V |
 | 44–47 | SPI RX, CSn, SCK, TX | ESP32 link; SPI1 function pins, or PIO |
 
 The command and data state machines live in different PIO blocks and are
@@ -213,6 +213,10 @@ committing. Assembling only some of the five PCBs is an option.
 - RP2354B BOOTSEL: is QSPI_SS bonded out with in-package flash? If not, use the
   documented alternative bootloader entry.
 - RP2350 PIO cross-block IRQ (PREV/NEXT) for command/data SM sync.
-- DDR3 DIMM socket: in-stock LCSC part, footprint, latch clearance.
+- DDR3 DIMM socket: no LCSC part found yet (candidates: TE 1-1932000-1, Molex
+  783210153, Amphenol 10081530-12207LF). If JLCPCB doesn't stock one: global
+  sourcing or consigned parts, else hand-fit.
+- I/O expander: TCA9534A out of stock at LCSC; PCA9534PWR (C133803) or PCA9554.
+- SN74AVC16T245DGGR = C148481 (~490 in stock — reserve via My Part Lib).
 - Is CK0/CK0# on the stick terminated differentially or to VTT?
 - KiCad 10 scripting route for Freerouting (above).
