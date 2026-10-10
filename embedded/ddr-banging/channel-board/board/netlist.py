@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 
 from board.parts import part
@@ -33,9 +34,9 @@ class Circuit:
     def add(self, key, ref=None, dnp=False, value=None):
         p = part(key)
         if ref is None:
-            prefix = _prefix(key)
-            n = 1 + sum(1 for r in self.instances if r.rstrip("0123456789") == prefix)
-            ref = f"{prefix}{n}"
+            ref = self._next_ref(_prefix(key))
+        if ref in self.instances:
+            raise ValueError(f"duplicate ref {ref}")
         inst = PartInstance(ref, p, dnp, value or p.value)
         self.instances[ref] = inst
         return inst
@@ -44,7 +45,17 @@ class Circuit:
         inst, name = term[0], term[1]
         if name not in inst.part.pins:
             raise KeyError(f"{inst.ref}: no pin {name!r}")
-        return [term[2]] if len(term) > 2 else inst.part.pins[name]
+        if len(term) > 2:
+            pad = term[2]
+            if pad not in inst.part.pins[name]:
+                raise KeyError(f"{inst.ref}: pin {name!r} has no pad {pad!r}")
+            return [pad]
+        return inst.part.pins[name]
+
+    def _next_ref(self, prefix):
+        nums = [int(m.group(1)) for r in self.instances
+                if (m := re.fullmatch(re.escape(prefix) + r"(\d+)", r))]
+        return f"{prefix}{max(nums, default=0) + 1}"
 
     def connect(self, net, *terms):
         for t in terms:
