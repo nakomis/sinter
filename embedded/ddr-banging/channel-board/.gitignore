@@ -1,0 +1,6 @@
+.venv/
+out/tmp/
+*.dsn
+*.ses
+freerouting/
+__pycache__/

@@ -1,0 +1,2 @@
+pytest==8.3.3
+easyeda2kicad==0.8.0
