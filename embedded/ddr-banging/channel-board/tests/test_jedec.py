@@ -54,3 +54,12 @@ def test_socket_numbering_matches_te_drawing():
     assert abs(abs(_pad(120).x - _pad(1).x) - 123.00) < 0.05
     assert abs(_pad(121).x - _pad(1).x) < 0.6
     assert abs(_pad(1).y - _pad(2).y) > 1.0          # staggered rows
+
+
+def test_socket_rows_match_te_drawing():
+    # Sheet 3 (viewed from connector side): rows at y = -2.85, -0.95, +0.95, +2.85.
+    # Pin 1 +0.95, pin 2 +2.85, pin 121 -2.85, pin 122 -0.95; rows repeat across the key.
+    for n, y in ((1, 0.95), (2, 2.85), (121, -2.85), (122, -0.95)):
+        assert abs(_pad(n).y - y) < 0.01, n
+    assert abs(_pad(49).y - _pad(1).y) < 0.01
+    assert abs(_pad(48).y - _pad(2).y) < 0.01

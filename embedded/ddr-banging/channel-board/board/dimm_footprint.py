@@ -68,12 +68,12 @@ def render():
     for n in range(1, 241):
         x, y = contact_xy(n)
         L.append(f'\t(pad "{n}" thru_hole circle (at {px(x):.3f} {y:.3f}) (size {PAD:.2f} {PAD:.2f}) '
-                 f'(drill {DRILL:.2f}) (layers "*.Cu" "*.Mask"))')
+                 f'(drill {DRILL:.2f}) (layers "*.Mask"))')
     for x in (px(-PEG_OUTSIDE), px(123.0 + PEG_OUTSIDE)):
-        L.append(f'\t(pad "" np_thru_hole circle (at {x:.3f} 0) (size {PEG_D} {PEG_D}) (drill {PEG_D}) (layers "*.Cu" "*.Mask"))')
+        L.append(f'\t(pad "" np_thru_hole circle (at {x:.3f} 0) (size {PEG_D} {PEG_D}) (drill {PEG_D}) (layers "*.Mask"))')
     kx = px(47.0 + KEY_GAP / 2)
     L.append(f'\t(pad "" np_thru_hole oval (at {kx:.3f} 0) (size {KEY_SLOT[0]} {KEY_SLOT[1]}) '
-             f'(drill oval {KEY_SLOT[0]} {KEY_SLOT[1]}) (layers "*.Cu" "*.Mask"))')
+             f'(drill oval {KEY_SLOT[0]} {KEY_SLOT[1]}) (layers "*.Mask"))')
     L.append(')')
     return "\n".join(L) + "\n"
 
