@@ -1,0 +1,92 @@
+"""Parts catalogue: LCSC/EasyEDA footprints and symbols, keyed by role."""
+from dataclasses import dataclass
+from pathlib import Path
+
+from board.kicadlib import Footprint, load_footprint, load_symbol_pin_types, load_symbol_pins
+
+HERE = Path(__file__).resolve().parent.parent
+LCSC_FP = HERE / "footprints" / "lcsc.pretty"
+LCSC_SYM = HERE / "footprints" / "lcsc.kicad_sym"
+
+
+@dataclass
+class PartDef:
+    key: str
+    value: str
+    lcsc: str
+    footprint: Footprint
+    pins: dict
+    pin_types: dict
+    extended: bool
+    tht: bool
+    rotation_offset: float   # degrees added to placement rotation for JLCPCB CPL
+
+
+# key: (value, lcsc, footprint file stem, symbol name, extended, rotation_offset)
+# Footprint stems and symbol names are exactly what easyeda2kicad wrote.
+#
+# DIMM (TE 1-1932000-0, C5164821) is deliberately absent: neither it nor the
+# fallback C5171640 exists in EasyEDA's library (API returns 404 "Component not
+# found"), so there is nothing to fetch. It needs a hand-built footprint.
+_TABLE = {
+    "RP2354B": ("RP2354B", "C39843328", "QFN-80_L10.0-W10.0-P0.40-TL-EP3.4", "RP2354B_C39843328", True, 0),
+    "XLAT": ("SN74AVC16T245DGGR", "C148481", "TSSOP-48_L12.6-W6.2-P0.50-LS8.1-BL", "SN74AVC16T245DGGR", True, 0),
+    "VTTREG": ("TPS51200DRCR", "C34771", "WSON-10_L3.0-W3.0-P0.50-BL-EP", "TPS51200DRCR", True, 0),
+    "EXPANDER": ("PCA9534PWR", "C133803", "TSSOP-16_L5.0-W4.4-P0.65-LS6.4-BL", "PCA9534PWR", True, 0),
+    "DEC138": ("SN74LVC138APWR", "C485077", "TSSOP-16_L5.0-W4.4-P0.65-LS6.4-BL", "SN74LVC138APWR", True, 0),
+    "LDO33": ("AMS1117-3.3", "C6186", "SOT-223-3_L6.5-W3.4-P2.30-LS7.0-BR", "AMS1117-3.3", False, 0),
+    "BUCK": ("TPS563201DDCR", "C116592", "SOT-23-6_L2.9-W1.6-P0.95-LS2.8-BR", "TPS563201DDCR", True, 0),
+    "L_BUCK": ("2.2uH", "C408345", "IND-SMD_L5.4-W5.2", "MWSA0518S-2R2MT", True, 0),
+    "L_CORE": ("3.3uH", "C42411119", "IND-SMD_L2.0-W1.6_AOTA-B201610S3R3-101-T", "AOTA-B201610S3R3-101-T", True, 0),
+    "XTAL12": ("12MHz", "C9002", "CRYSTAL-SMD_4P-L3.2-W2.5-BL", "X322512MSB4SI", False, 0),
+    "USBC": ("TYPE-C-31-M-12", "C165948", "USB-C_SMD-TYPE-C-31-M-12_1", "TYPE-C-31-M-12", True, 0),
+    "SW": ("TS-1187A-B-A-B", "C318884", "SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5", "TS-1187A-B-A-B", False, 0),
+    "LED_G": ("KT-0805G", "C2297", "LED0805-R-RD", "0805G(Green)", False, 0),
+    "LED_R": ("KT-0603R", "C2286", "LED-SMD_L1.6-W0.8-R-RD", "KT-0603R", False, 0),
+    "JST_SWD": ("SM03B-SRSS-TB", "C160403", "CONN-SMD_SM03B-SRSS-TB-LF-SN-P", "SM03B-SRSS-TB(LF)(SN)(P)", True, 0),
+    "HDR_2X25": ("2x25 header", "C53207574", "IDC-TH_50P-P2.54_HIF3BB-50PA-2.54DSA", "DC2.54-2*25PZ", True, 0),
+    "HDR_2X4": ("2x4 header", "C55829516", "HDR-TH_8P-P2.54-V-M-R2-C4-S2.54_PZ254V-22", "2.54X2.52X4PPA6.0PC3.0L11.6", True, 0),
+    "C100N": ("100nF", "C1525", "C0402", "CL05B104KO5NNNC", False, 0),
+    "C1U": ("1uF", "C52923", "C0402", "CL05A105KA5NQNC", False, 0),
+    "C4U7": ("4.7uF", "C23733", "C0402", "CL05A475MP5NRNC", False, 0),
+    "C10U": ("10uF", "C19702", "C0603", "CL10A106KP8NNNC", False, 0),
+    "C22U": ("22uF", "C45783", "C0805", "CL21A226MAQNNNE", False, 0),
+    "C15P": ("15pF", "C1548", "C0402", "0402CG150J500NT", False, 0),
+    "R27": ("27R", "C25100", "R0402", "0402WGF270JTCE", True, 0),
+    "R33": ("33R", "C25105", "R0402", "0402WGF330JTCE", False, 0),
+    "R0": ("0R", "C17168", "R0402", "0402WGF0000TCE", False, 0),
+    "R1K": ("1k", "C11702", "R0402", "0402WGF1001TCE", False, 0),
+    "R1K5": ("1k5", "C25867", "R0402", "0402WGF1501TCE", False, 0),
+    "R2K": ("2k", "C4109", "R0402", "0402WGF2001TCE", False, 0),
+    "R4K7": ("4k7", "C25900", "R0402", "0402WGF4701TCE", False, 0),
+    "R5K1": ("5k1", "C25905", "R0402", "0402WGF5101TCE", False, 0),
+    "R10K": ("10k", "C25744", "R0402", "0402WGF1002TCE", False, 0),
+}
+
+# fetched-name -> our-name, per key. Only EasyEDA's active-low "~{xOE}" spelling
+# differs from the names the rest of the code uses; the RP2354B symbol already
+# uses IOVDD, DVDD, VREG_*, USB_DP/DM, XIN/XOUT, SWCLK/SWDIO, RUN and QSPI_SS
+# (pin 75) directly. Only the ADC-capable GPIO40..47 carry a "_ADCn" suffix.
+ALIASES = {
+    "RP2354B": {f"GPIO{40 + n}_ADC{n}": f"GPIO{40 + n}" for n in range(8)},
+    "XLAT": {"~{1OE}": "1OE#", "~{2OE}": "2OE#"},
+}
+
+
+def _load(key, row):
+    value, lcsc, fp_stem, sym, extended, rot = row
+    fp = load_footprint(LCSC_FP / f"{fp_stem}.kicad_mod")
+    raw = load_symbol_pins(LCSC_SYM, sym)
+    alias = ALIASES.get(key, {})
+    pins = {}
+    for name, nums in raw.items():
+        pins.setdefault(alias.get(name, name), []).extend(nums)
+    tht = any(p.kind == "thru_hole" for p in fp.pads)
+    return PartDef(key, value, lcsc, fp, pins, load_symbol_pin_types(LCSC_SYM, sym), extended, tht, rot)
+
+
+PARTS = {k: _load(k, row) for k, row in _TABLE.items()}
+
+
+def part(key):
+    return PARTS[key]
