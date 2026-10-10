@@ -2,7 +2,7 @@ import math
 
 from board.netlist import check
 from board.placement import Placement, bbox, rotate
-from board.xlat_test import SILK_TEXT, build_xlat_test, place_xlat_test
+from board.xlat_test import TITLE, SIDE_TEXT, build_xlat_test, place_xlat_test, silk_xlat
 
 C = build_xlat_test()
 
@@ -82,6 +82,14 @@ def test_bbox_rotation_and_manual_placement():
     assert Placement((0, 0, 1, 1), {}).courtyards == {}
 
 
-def test_silk_text():
-    assert "SINT-101 AVC16T245" in SILK_TEXT
-    assert any("3.3" in t and "1.5" in t for t in SILK_TEXT)
+def test_silk_labels_chip_pins_and_supply_sides():
+    c = build_xlat_test()
+    pl = place_xlat_test(c)
+    silk = {t: (x, y) for t, x, y, _ in silk_xlat(c, pl)}
+    assert TITLE in silk
+    # J2 (chip pins 25-48) is the A side, J1 the B side; the labels sit on the matching rows.
+    assert "VCCA" in SIDE_TEXT[0] and "VCCB" in SIDE_TEXT[1]
+    assert silk[SIDE_TEXT[0]][1] < silk[SIDE_TEXT[1]][1]            # J2 is the top row
+    assert pl.at["J2"][1] < pl.at["J1"][1]
+    assert {"48", "25", "24"} <= set(silk)
+    assert [t for t, *_ in silk_xlat(c, pl)].count("1") == 2          # U1 and J1 only

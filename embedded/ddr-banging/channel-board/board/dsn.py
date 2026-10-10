@@ -14,7 +14,7 @@ SCALE = 1000                        # DSN units per mm
 POWER = ("+5V", "+3V3", "+1V5", "+1V1", "VTT", "GND")
 # Freerouting is told the clearances are this much larger than the design rules, because it
 # narrows some pad-escape stubs (which read_ses() then widens) and rounds pad outlines.
-ROUTER_MARGIN = 0.01
+ROUTER_MARGIN = 0.04
 _PLAIN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -67,7 +67,7 @@ def write_dsn(circuit, placement, path, layers=4):
     out = ["(pcb channel", '  (parser (string_quote ") (space_in_quoted_tokens on) (host_cad "sint101"))',
            "  (resolution um 1)", "  (unit um)", "  (structure"]
     for l in copper:
-        out.append(f"    (layer {l} (type signal))")
+        out.append(f"    (layer {l} (type {'power' if l.startswith('In') else 'signal'}))")
     out.append(f"    (boundary (path pcb 0 {outline}))")
     out.append(f"    (via {_q(via)})")
     out.append(f"    (rule (width {_u(0.15)}) (clearance {_u(0.15)}))")
@@ -106,8 +106,8 @@ def write_dsn(circuit, placement, path, layers=4):
     # On a 2-layer board GND is carried by the B.Cu pour; the tracks are only connections to it,
     # and 0.5 mm tracks cannot be routed between 0.5 mm-pitch pads (Freerouting left 20 GND
     # connections open), so GND gets its own class there: default width, power clearance.
-    # It must keep the Power class clearance (0.2 mm) from .kicad_pro; the router is given 0.25 mm
-    # so that the narrowed stubs read_ses() widens back to 0.15 mm still clear.
+    # It must keep the Power class clearance (0.2 mm) from .kicad_pro; like every class the
+    # router is given ROUTER_MARGIN extra, so runs that read_ses() widens back to 0.15 mm still clear.
     thin_gnd = layers == 2 and "GND" in circuit.nets
     power = [n for n in sorted(circuit.nets) if n in POWER and not (thin_gnd and n == "GND")]
     other = [n for n in sorted(circuit.nets) if n not in POWER]

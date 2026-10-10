@@ -52,15 +52,19 @@ class _Uuids:
         return [S("uuid"), str(uuid.uuid5(_NS, str(self.n)))]
 
 
-def pin1_marks(circuit, placement, marks, gap=1.2):
-    """Silkscreen entries (text, x, y, size) for (ref, text) pairs: the text sits 'gap' mm
-    to the left of the first pad's edge (in board coordinates, whatever the part's rotation)."""
+def pin_marks(circuit, placement, marks, inset=2.4):
+    """Silkscreen entries (text, x, y, size) for (ref, pad, text, toward) tuples: the text sits
+    'inset' mm from that pad's centre, towards the board point 'toward' (an (x, y) pair), clear
+    of the part's own outline. Rotation of the part is applied to the pad position."""
     out = []
-    for ref, text in marks:
+    for ref, number, text, toward in marks:
         x, y, rot = placement.at[ref]
-        pad = next(p for p in circuit.instances[ref].part.footprint.pads if p.number == "1")
+        pad = next(p for p in circuit.instances[ref].part.footprint.pads if p.number == number)
         dx, dy = rotate(pad.x, pad.y, rot)
-        out.append((text, x + dx - pad.w / 2 - gap, y + dy, 1.0))
+        px, py = x + dx, y + dy
+        tx, ty = toward
+        d = max(((tx - px) ** 2 + (ty - py) ** 2) ** 0.5, 1e-9)
+        out.append((text, px + inset * (tx - px) / d, py + inset * (ty - py) / d, 1.0))
     return out
 
 
@@ -75,7 +79,7 @@ def _modern_arc(arc):
     arc[1:1] = [[S("start"), first[1], first[2]], [S("mid")] + pt(-angle / 2), [S("end")] + pt(-angle)]
 
 
-def _footprint(inst, x, y, rot, nets, uid):
+def _footprint(inst, x, y, rot, nets, uid, hide_ref=False):
     fp = copy.deepcopy(inst.part.footprint.node)
     fp[0] = S("footprint")
     fp[1] = str(fp[1]).split(":")[-1]      # the library nickname is not configured in the project
@@ -91,6 +95,8 @@ def _footprint(inst, x, y, rot, nets, uid):
     for t in find_all(fp, "fp_text"):
         if t[1] == "reference":
             t[2] = inst.ref
+            if hide_ref:
+                t.insert(t.index(find(t, "layer")) + 1, S("hide"))
         elif t[1] == "value":
             t[2] = inst.value
         if rot:                                      # text angles are absolute on a board
@@ -141,11 +147,13 @@ PRO = {
 }
 
 
-def write_board(circuit, placement, path, tracks=(), vias=(), layers=4, silk=()):
+def write_board(circuit, placement, path, tracks=(), vias=(), layers=4, silk=(), hide_refs=(), art=None):
     """Write 'path' (.kicad_pcb) and a .kicad_pro beside it.
 
     layers=4: F.Cu, In1.Cu (GND zone), In2.Cu (+1V5 zone, only if that net exists), B.Cu.
-    layers=2: F.Cu and B.Cu, with a GND zone on B.Cu. silk: (text, x, y, size_mm) entries."""
+    layers=2: F.Cu and B.Cu, with a GND zone on B.Cu. silk: (text, x, y, size_mm) entries.
+    hide_refs: refs whose reference text is not drawn.
+    art: (png_path, x, y, height_mm): a silk portrait, top-left at (x, y); see board/art.py."""
     if layers not in (2, 4):
         raise ValueError("layers must be 2 or 4")
     path = Path(path)
@@ -170,7 +178,7 @@ def write_board(circuit, placement, path, tracks=(), vias=(), layers=4, silk=())
     for ref, inst in circuit.instances.items():
         x, y, rot = placement.at[ref]
         nets = {pad: (ids[n], n) for n in names for (r, pad) in circuit.nets[n] if r == ref}
-        tree.append(_footprint(inst, x, y, rot, nets, uid))
+        tree.append(_footprint(inst, x, y, rot, nets, uid, ref in hide_refs))
     plane = [("GND", "In1.Cu" if layers == 4 else "B.Cu")]
     if layers == 4:
         plane.append(("+1V5", "In2.Cu"))
@@ -183,6 +191,9 @@ def write_board(circuit, placement, path, tracks=(), vias=(), layers=4, silk=())
     for v in vias:
         tree.append([S("via"), [S("at"), v.x, v.y], [S("size"), 0.6], [S("drill"), 0.3],
                      [S("layers"), "F.Cu", "B.Cu"], [S("net"), ids[v.net]], uid()])
+    if art:
+        from board.art import art_footprint
+        tree.append(art_footprint(*art))
     for text, x, y, size in silk:
         tree.append(_text(text, x, y, size, uid))
     path.write_text(dumps(tree).replace(") (", ")\n (") + "\n")

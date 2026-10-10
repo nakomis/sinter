@@ -4,19 +4,16 @@ import subprocess
 import pytest
 from conftest import KICAD_CLI
 
-from board.kicad_pcb import Track, Via, pin1_marks, write_board
+from board.kicad_pcb import Track, Via, write_board
 from board.netlist import Circuit
 from board.placement import Placement
 from board.sexpr import find, find_all, parse
-from board.xlat_test import SILK_PIN1, SILK_TEXT, build_xlat_test, place_xlat_test
+from board.xlat_test import build_xlat_test, place_xlat_test, silk_xlat
 
 BAD = ("courtyards_overlap", "malformed_courtyard", "invalid_outline", "lib_footprint_issues")
 
 
-def _silk(c, pl):
-    x0, y0, x1, y1 = pl.outline
-    texts = [(t, (x0 + x1) / 2, y0 + 1.3 + 1.2 * i, 1.0) for i, t in enumerate(SILK_TEXT)]
-    return texts + list(pin1_marks(c, pl, SILK_PIN1))
+_silk = silk_xlat
 
 
 def _drc(path, out):

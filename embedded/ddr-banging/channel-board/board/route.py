@@ -23,4 +23,8 @@ def route(circuit, placement, workdir, passes=100, layers=4, log="/tmp/channel-b
                        check=True, stdout=f, stderr=subprocess.STDOUT)
     if not ses.exists():
         raise RuntimeError(f"Freerouting wrote no session file; see {log}")
-    return read_ses(ses, min_width=MIN_TRACK)
+    report = {}
+    tracks, vias = read_ses(ses, min_width=MIN_TRACK, report=report)
+    print(f"routed: {len(tracks)} segments, {len(vias)} vias; widened {report['widened']} narrowed "
+          f"segments ({report['widened_mm']:.1f} mm) to {MIN_TRACK} mm")
+    return tracks, vias

@@ -26,7 +26,7 @@ def test_dsn_two_layer_has_no_planes(tmp_path):
     assert "(plane" not in text and "In1.Cu" not in text
     assert "(layer F.Cu (type signal))" in text and "(layer B.Cu (type signal))" in text
     assert text.count("(net ") >= len(c.nets)
-    assert "(class gnd GND" in text and "(clearance 210)" in text
+    assert "(class gnd GND" in text and "(clearance 240)" in text
     assert "(class power GND" not in text
 
 
@@ -34,6 +34,8 @@ def test_dsn_four_layer_has_planes(tmp_path):
     c = build_xlat_test()
     write_dsn(c, place_xlat_test(c), tmp_path / "a.dsn", layers=4)
     text = (tmp_path / "a.dsn").read_text()
+    assert "(layer In1.Cu (type power))" in text and "(layer In2.Cu (type power))" in text
+    assert "(layer F.Cu (type signal))" in text and "(layer B.Cu (type signal))" in text
     assert "(plane GND (polygon In1.Cu" in text and "Via[0-3]_600:300_um" in text
 
 
@@ -44,3 +46,11 @@ def test_full_route_is_drc_clean():
     drc = json.loads((ROOT / "out" / "xlat-test" / "drc.json").read_text())
     assert drc["unconnected_items"] == []
     assert [v for v in drc["violations"] if v["severity"] == "error"] == []
+
+
+def test_read_ses_reports_widened_segments(tmp_path):
+    ses = tmp_path / "n.ses"
+    ses.write_text('(session n (routes (resolution um 1) (network_out (net A (wire (path F.Cu 100 0 0 1000 0))))))')
+    rep = {}
+    tracks, _ = read_ses(ses, min_width=0.15, report=rep)
+    assert tracks[0].width == 0.15 and rep == {"widened": 1, "widened_mm": 1.0}
