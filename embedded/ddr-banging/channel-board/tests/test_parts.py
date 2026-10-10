@@ -1,5 +1,3 @@
-import pytest
-
 from board.parts import PARTS, part
 
 
@@ -30,7 +28,6 @@ def test_translator_pins():
     assert "VCCA" in p.pins and "VCCB" in p.pins
 
 
-@pytest.mark.skip(reason="DIMM footprint generated in Task 4")
 def test_dimm_socket_has_240_numbered_contacts():
     p = part("DIMM")
     nums = {pad.number for pad in p.footprint.pads}
@@ -44,6 +41,5 @@ def test_tht_flags():
     assert not part("VTTREG").tht and not part("USBC").tht
 
 
-@pytest.mark.skip(reason="DIMM footprint generated in Task 4")
 def test_dimm_is_tht():
     assert part("DIMM").tht
