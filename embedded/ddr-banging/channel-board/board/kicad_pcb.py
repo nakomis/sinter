@@ -24,6 +24,28 @@ _USER_LAYERS = [
 ]
 
 
+def _stackup(cu, mask, silkscreen):
+    if not (mask or silkscreen):
+        return []
+    def col(c):
+        return [[S("color"), c]] if c else []
+    st = [S("stackup"),
+          [S("layer"), "F.SilkS", [S("type"), "Top Silk Screen"]] + col(silkscreen),
+          [S("layer"), "F.Paste", [S("type"), "Top Solder Paste"]],
+          [S("layer"), "F.Mask", [S("type"), "Top Solder Mask"]] + col(mask) + [[S("thickness"), 0.01]]]
+    for k, (_, name, _) in enumerate(cu):
+        st.append([S("layer"), name, [S("type"), "copper"], [S("thickness"), 0.035]])
+        if k < len(cu) - 1:
+            st.append([S("layer"), f"dielectric {k + 1}", [S("type"), "core"],
+                       [S("thickness"), round(1.51 / (len(cu) - 1), 4)], [S("material"), "FR4"],
+                       [S("epsilon_r"), 4.5], [S("loss_tangent"), 0.02]])
+    st += [[S("layer"), "B.Mask", [S("type"), "Bottom Solder Mask"]] + col(mask) + [[S("thickness"), 0.01]],
+           [S("layer"), "B.Paste", [S("type"), "Bottom Solder Paste"]],
+           [S("layer"), "B.SilkS", [S("type"), "Bottom Silk Screen"]] + col(silkscreen),
+           [S("copper_finish"), "ENIG"]]
+    return [st]
+
+
 @dataclass
 class Track:
     net: str
@@ -147,13 +169,16 @@ PRO = {
 }
 
 
-def write_board(circuit, placement, path, tracks=(), vias=(), layers=4, silk=(), hide_refs=(), art=None):
+def write_board(circuit, placement, path, tracks=(), vias=(), layers=4, silk=(), hide_refs=(), art=None,
+                mask=None, silkscreen=None):
     """Write 'path' (.kicad_pcb) and a .kicad_pro beside it.
 
     layers=4: F.Cu, In1.Cu (GND zone), In2.Cu (+1V5 zone, only if that net exists), B.Cu.
     layers=2: F.Cu and B.Cu, with a GND zone on B.Cu. silk: (text, x, y, size_mm) entries.
     hide_refs: refs whose reference text is not drawn.
-    art: (png_path, x, y, height_mm): a silk portrait, top-left at (x, y); see board/art.py."""
+    art: (png_path, x, y, height_mm): a silk portrait, top-left at (x, y); see board/art.py.
+    mask, silkscreen: colour names for the stackup, which only affects renders (gerbers carry
+    no colour). None for both keeps KiCad's defaults (green mask, white silk)."""
     if layers not in (2, 4):
         raise ValueError("layers must be 2 or 4")
     path = Path(path)
@@ -169,7 +194,7 @@ def write_board(circuit, placement, path, tracks=(), vias=(), layers=4, silk=(),
             [S("general"), [S("thickness"), 1.6]],
             [S("paper"), "A3"],
             [S("layers")] + [[n, name, S(kind), *alias] for n, name, kind, *alias in cu + _USER_LAYERS],
-            [S("setup"), [S("pad_to_mask_clearance"), 0]],
+            [S("setup")] + _stackup(cu, mask, silkscreen) + [[S("pad_to_mask_clearance"), 0]],
             [S("net"), 0, ""]] + [[S("net"), ids[n], n] for n in names]
     x0, y0, x1, y1 = placement.outline
     tree.append([S("gr_rect"), [S("start"), x0, y0], [S("end"), x1, y1],

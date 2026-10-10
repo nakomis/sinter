@@ -4,3 +4,5 @@ out/tmp/
 *.ses
 freerouting/
 __pycache__/
+out/*/gerbers/
+*.kicad_prl

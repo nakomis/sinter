@@ -94,6 +94,12 @@ def _load(key, row):
     return PartDef(key, value, lcsc, fp, pins, pin_types, extended, tht, rot)
 
 
+# Extended parts whose CPL rotation offset has been checked. EasyEDA-fetched footprints follow
+# JLCPCB's own orientation convention, so their offset is 0. The generated DIMM footprint is
+# hand-soldered-style through-hole whose orientation is fixed by its key slot, so also 0.
+# The final check is a look at JLCPCB's placement preview at order time.
+ROTATION_CHECKED = {k for k, row in _TABLE.items() if row[4] and row[5] == 0}
+
 PARTS = {k: _load(k, row) for k, row in _TABLE.items()}
 
 

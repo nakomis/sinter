@@ -10,6 +10,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from board.fab import fab, write_bom, write_cpl
 from board.kicad_pcb import write_board
 from board.netlist import check
 from board.route import route
@@ -20,6 +21,10 @@ KICAD_CLI = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
 
 
 # name -> (build circuit, place, layers, silk function, art function, board file stem)
+# Ordered with JLCPCB "PCB Color: White" (which gives black silkscreen). Gerbers carry no
+# colour; this only makes the KiCad renders match the order.
+MASK, SILK = "White", "Black"
+
 BOARDS = {
     "xlat-test": (build_xlat_test, place_xlat_test, 2, silk_xlat, art_xlat, "xlat-test"),
 }
@@ -45,7 +50,7 @@ def main():
         tracks, vias = route(c, p, tmp, passes=a.passes, layers=layers)
     board = out / f"{stem}.kicad_pcb"
     write_board(c, p, board, tracks, vias, layers=layers, silk=silk(c, p), art=art(p),
-                hide_refs=set(c.instances))   # the silk labels replace the reference texts
+                hide_refs=set(c.instances), mask=MASK, silkscreen=SILK)   # the silk labels replace the reference texts
     subprocess.run([KICAD_CLI, "pcb", "drc", "--refill-zones", "--save-board", "--format", "json",
                     "--severity-all", "-o", str(out / "drc.json"), str(board)], check=True)
     drc = json.loads((out / "drc.json").read_text())
@@ -53,6 +58,12 @@ def main():
     bad += [f"{v['type']}: {v['description']}" for v in drc["violations"] if v["severity"] == "error"]
     warn = len([v for v in drc["violations"] if v["severity"] != "error"])
     print(f"wrote {board} ({warn} DRC warnings)")
+    if not bad:
+        write_bom(c, out / "bom.csv")
+        write_cpl(c, p, out / "cpl.csv")
+        fab(board, out, layers=layers)
+        print(f"fab outputs in {out}: bom.csv, cpl.csv, {stem}-gerbers.zip, renders; "
+              f"order with solder mask {MASK}, silkscreen {SILK}")
     if bad:      # kicad-cli exits 0 even when DRC fails
         raise SystemExit("DRC failed:\n" + "\n".join(bad))
 

@@ -1,0 +1,68 @@
+"""JLCPCB fabrication outputs: BOM, CPL (pick and place), gerbers, drill files and renders.
+
+Only circuit instances reach the BOM and CPL, so board-only footprints (the silk portrait)
+are excluded by construction; DNP instances are excluded explicitly, in Python."""
+import csv
+import shutil
+import subprocess
+import zipfile
+from pathlib import Path
+
+KICAD_CLI = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
+
+
+def _fitted(circuit):
+    return {r: i for r, i in circuit.instances.items() if not i.dnp}
+
+
+def _ref_key(ref):
+    head = ref.rstrip("0123456789")
+    return head, int(ref[len(head):] or 0)
+
+
+def write_bom(circuit, path):
+    groups = {}
+    for ref, inst in _fitted(circuit).items():
+        groups.setdefault((inst.value, inst.part.lcsc, inst.part.footprint.name.split(":")[-1]), []).append(ref)
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["Comment", "Designator", "Footprint", "LCSC Part #"])
+        for (value, lcsc, fp), refs in sorted(groups.items(), key=lambda g: _ref_key(sorted(g[1], key=_ref_key)[0])):
+            w.writerow([value, ",".join(sorted(refs, key=_ref_key)), fp, lcsc])
+
+
+def write_cpl(circuit, placement, path):
+    """Mid X / Mid Y are the footprint origin (the pad-pattern centre for every part) in mm,
+    measured from the outline's bottom-left corner with y up (KiCad's y is down)."""
+    x0, _, _, y1 = placement.outline
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
+        for ref, inst in sorted(_fitted(circuit).items(), key=lambda kv: _ref_key(kv[0])):
+            x, y, rot = placement.at[ref]
+            w.writerow([ref, f"{x - x0:.4f}", f"{y1 - y:.4f}", "Top",
+                        f"{(rot + inst.part.rotation_offset) % 360:g}"])
+
+
+def fab(board_path, out_dir, layers=2):
+    """Gerbers + drill (zipped to <stem>-gerbers.zip) and top/bottom renders in out_dir."""
+    board_path, out_dir = Path(board_path), Path(out_dir)
+    stem = board_path.stem
+    gdir = out_dir / "gerbers"
+    shutil.rmtree(gdir, ignore_errors=True)
+    gdir.mkdir(parents=True)
+    cu = ["F.Cu"] + (["In1.Cu", "In2.Cu"] if layers == 4 else []) + ["B.Cu"]
+    lay = cu + ["F.Paste", "F.Mask", "B.Mask", "F.Silkscreen", "B.Silkscreen", "Edge.Cuts"]
+    run = lambda *a: subprocess.run([KICAD_CLI, *a], check=True, capture_output=True, text=True)
+    run("pcb", "export", "gerbers", "--layers", ",".join(lay), "--subtract-soldermask", "--no-x2",
+        "-o", str(gdir) + "/", str(board_path))
+    run("pcb", "export", "drill", "--format", "excellon", "--excellon-separate-th",
+        "-o", str(gdir) + "/", str(board_path))
+    zpath = out_dir / f"{stem}-gerbers.zip"
+    with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(gdir.iterdir()):
+            if f.suffix != ".gbrjob":
+                z.write(f, f.name)
+    for side in ("top", "bottom"):
+        run("pcb", "render", "--side", side, "-o", str(out_dir / f"{stem}-{side}.png"), str(board_path))
+    return zpath
