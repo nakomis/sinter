@@ -214,13 +214,19 @@ committing. Assembling only some of the five PCBs is an option.
 - RP2354B BOOTSEL: is QSPI_SS bonded out with in-package flash? If not, use the
   documented alternative bootloader entry.
 - RP2350 PIO cross-block IRQ (PREV/NEXT) for command/data SM sync.
-- DDR3 DIMM socket: **Amphenol FCI 10081530-11107LF (LCSC C4775483)** —
-  1.5 V centre key "XB" (DDR3, JEDEC MO-269), through-hole vertical, 2.67 mm
-  tails, three metal clips (ends + centre: needs the 2.45 mm centre hole),
-  black housing / ivory ejectors, 15 µ" gold. Footprint from sheet 3: 240 ×
-  Ø0.70 mm on 1.00 mm pitch, 2.45 mm peg holes, 142 mm max footprint, 165 mm
-  max with ejectors. Fallback: TE 1-1932000-1 (C5171640, pre-order, min 2).
-  Stock/price at JLCPCB to confirm.
+- DDR3 DIMM socket: **TE 1-1932000-1 (JLCPCB C5171640)** — pre-order (0 stock,
+  min 2, ~$6.84 each); wave-soldered, Economic or Standard PCBA. TE customer
+  drawing C-1932000 rev H7 (`docs/ENG_CD_1932000_H7.pdf`, local): black housing,
+  natural extractors, 15 µ" gold, 3.18 mm tails (TE's length for 2.36 mm PCB —
+  ~1.6 mm protrusion on our 1.6 mm board, acceptable; **1-1932000-0** is the
+  2.67 mm-tail twin for 1.6 mm PCB, prefer it if JLCPCB lists it).
+  Footprint (sheet 3): 240 × Ø0.70 ± 0.08 mm on 1.00 mm pitch, staggered rows,
+  max 0.15 mm annular ring; Ø2.45 mm peg holes at both ends (datums D, E) and
+  at the key, plus a 1.80 mm slot; keep-out 142 × 7.75 mm; extractor shadow
+  areas both ends (≤ 6.85 mm component height); 165 mm with latches open.
+  Cross-check against JLCPCB's EasyEDA footprint (via easyeda2kicad).
+  Fallback: Amphenol FCI 10081530-11107LF (C4775483) — DDR3 centre key, 2.67 mm
+  tails, but consign-only at JLCPCB.
 - I/O expander: TCA9534A out of stock at LCSC; PCA9534PWR (C133803) or PCA9554.
 - SN74AVC16T245DGGR = C148481 (~490 in stock — reserve via My Part Lib).
 - Is CK0/CK0# on the stick terminated differentially or to VTT?
