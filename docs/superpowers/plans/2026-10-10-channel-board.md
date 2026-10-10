@@ -814,6 +814,65 @@ def check(c):
 
 ---
 
+### Task 5b: Translator test board (spike rehearsal) — circuit and placement
+
+Added 2026-10-10 (Martin): a JLCPCB-assembled SN74AVC16T245 breakout so the DIMM spike tests the board's real translator, and so Tasks 8–10 are proven on a cheap order first. **Execution order is now 1–5, 5b, 8–10 (targeting this board), then pause for the spike, then 6–7, re-run 8–10 for the channel board, 11.**
+
+**Files:**
+- Create: `board/xlat_test.py`, `tests/test_xlat_test.py`
+
+**Interfaces:**
+- Consumes: `Circuit`, `check`, `part()`; `Placement` dataclass from `board/placement.py` (create the module here with `Placement(outline, at)` and `bbox(placement, ref)` exactly as Task 7's interface describes; Task 7 later adds `place()` for the channel board).
+- Produces: `build_xlat_test() -> Circuit`; `place_xlat_test(circuit) -> Placement`.
+
+Design (a pre-assembled TSSOP-48 → DIP-48 adapter):
+- U1 = `XLAT` (SN74AVC16T245DGGR), fitted.
+- J1, J2 = 1×24 2.54 mm male headers (THT, key `HDR_1X24` — look up a JLCPCB C-number via Martin/Chrome, add to parts like Task 3), 15.24 mm (0.6") apart, so the board is DIP-48: **J1 pin n = U1 pin n (1–24), J2 pin k = U1 pin 49−k (48–25)** in standard DIP order (pin 25 opposite pin 24).
+- Nets are named after the chip pins (`1DIR`, `1B1`, …, `VCCA`, `VCCB`, `GND`), connecting U1 pin to its header pin.
+- Decoupling: per VCCA pin and per VCCB pin, one `C100N` and one `C1U` to GND, placed within 2 mm of that pin.
+- Outline about 65 × 20 mm (headers inset 2.5 mm from the long edges), 2 layers: the writer in Task 8 must accept a layer count (`layers=2|4`; 2-layer boards get no inner planes, GND routed as tracks/pour on B.Cu).
+- Silkscreen: pin 1 marks on U1 and both headers; "SINT-101 AVC16T245" and the VCCA = 3.3 V / VCCB = 1.5 V reminder.
+
+Tests (`tests/test_xlat_test.py`):
+```python
+from board.netlist import check
+from board.xlat_test import build_xlat_test, place_xlat_test
+
+C = build_xlat_test()
+
+
+def test_clean():
+    assert check(C) == []
+
+
+def test_dip_mapping():
+    for n in range(1, 25):
+        assert C.net_of("J1", str(n)) == C.net_of("U1", str(n)), n
+    for k in range(1, 25):
+        assert C.net_of("J2", str(k)) == C.net_of("U1", str(49 - k)), k
+
+
+def test_every_supply_pin_decoupled():
+    u = C.instances["U1"].part
+    for rail in ("VCCA", "VCCB"):
+        caps = [r for r, i in C.instances.items() if i.part.key in ("C100N", "C1U")
+                and C.net_of(r, "1") == rail or C.net_of(r, "2") == rail]
+        assert len(caps) >= 2 * len(u.pins[rail]), rail
+
+
+def test_placement_inside_outline():
+    from board.placement import bbox
+    P = place_xlat_test(C)
+    x0, y0, x1, y1 = P.outline
+    for ref in C.instances:
+        a = bbox(P, ref)
+        assert a[0] >= x0 and a[1] >= y0 and a[2] <= x1 and a[3] <= y1, ref
+```
+
+Then Tasks 8–10 run against this board first (`build.py --board xlat-test`), producing `out/xlat-test/` Gerbers/BOM/CPL; **Martin orders it** (human checkpoint), then the plan pauses for the DIMM spike (SINT-100) before Task 6.
+
+---
+
 ### Task 6: The circuit
 
 **Files:**
