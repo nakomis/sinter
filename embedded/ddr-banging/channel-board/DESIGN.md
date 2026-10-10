@@ -147,10 +147,9 @@ synchronised with RP2350 cross-block IRQs (to verify — see Open items).
 ```
 channel-board/
   DESIGN.md       this file
-  parts.py        parts: LCSC number, footprint, value, fitted/DNP
-  circuit.py      SKiDL circuit → netlist + ERC
-  place.py        scripted placement
-  build.sh        netlist → placed board → Freerouting → DRC → Gerbers/BOM/CPL
+  board/          Python package: parts, netlist model, circuit, placement,
+                  .kicad_pcb / .kicad_pro / Specctra DSN writers, SES reader, fab
+  build.sh        circuit → placed board → Freerouting → DRC → Gerbers/BOM/CPL
   footprints/     easyeda2kicad conversions (socket, USB-C, RP2354B, …)
   out/            gerbers.zip, bom.csv, cpl.csv, renders, ERC/DRC reports
 ```
@@ -158,7 +157,9 @@ channel-board/
 1. **Parts** from JLCPCB's library, preferring Basic and in-stock parts;
    footprints from KiCad's library where they match, else LCSC/EasyEDA via
    `easyeda2kicad` (so JLCPCB's orientation preview matches).
-2. **Circuit** in SKiDL → KiCad netlist, ERC.
+2. **Circuit** in our own small Python netlist model (parts, pins, nets) with
+   electrical checks. SKiDL dropped: we write the board file directly, so it
+   would only add a dependency.
 3. **Placement** scripted, `gen_pcb.py`-style: socket along a long edge with
    latch clearance; each lane's translator beside its byte group on the DIMM;
    C/A translators by the address pads; RP2354B central; USB-C on a short edge;
@@ -171,9 +172,13 @@ channel-board/
    margin: 0.15 mm track/space, 0.3 mm drill vias.
 6. **Outputs:** Gerber zip, BOM and CPL with lanes 1–7 DNP.
 
-**Risk to clear first:** scripted Specctra DSN export/import with KiCad 10 (the
-SWIG `pcbnew` module may be gone). Fallback: write the DSN directly from our
-own placement data and import the session via KiCad's IPC API or by parsing.
+**Routing route (confirmed 2026-10-10):** KiCad 10 has no SWIG `pcbnew` module and
+`kicad-cli` has no Specctra export/import, so we write the DSN from our own
+board model, run Freerouting 2.5.0 (`freerouting-2.5.0.jar`, Java 25) headless,
+parse its `.ses`, and write the tracks and vias into the `.kicad_pcb`.
+`kicad-cli pcb drc --refill-zones --save-board` fills the planes and checks.
+
+**All components on the top side** (single-sided assembly).
 
 ## 4. Verification, cost, bring-up
 
@@ -183,7 +188,7 @@ own placement data and import the session via KiCad's IPC API or by parsing.
   the JEDEC DDR3 UDIMM pinout table (extending `../pogo-pins.md` to all pins).
 - **GPIO map check:** every RP2354B pin against the table above; PIO groups
   contiguous and inside their windows.
-- **ERC** (SKiDL/KiCad), **DRC** zero errors.
+- **Electrical checks** (netlist model), **DRC** zero errors and zero unconnected.
 - **BOM check:** every fitted part has an in-stock LCSC number; cost totalled
   from the current price list.
 - **Renders** of both sides.
