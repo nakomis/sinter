@@ -32,15 +32,16 @@ def write_bom(circuit, path):
 
 
 def write_cpl(circuit, placement, path):
-    """Mid X / Mid Y are the footprint origin (the pad-pattern centre for every part) in mm,
-    measured from the outline's bottom-left corner with y up (KiCad's y is down)."""
-    x0, _, _, y1 = placement.outline
+    """Mid X / Mid Y are the footprint origin (the pad-pattern centre for every part) in mm in
+    the GERBER frame, which JLCPCB uses for placement: the same origin as the KiCad board, x
+    unchanged and y negated (KiCad's y is down, Gerber's is up). This matches KiCad's own
+    position file; it is not relative to the outline."""
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
         for ref, inst in sorted(_fitted(circuit).items(), key=lambda kv: _ref_key(kv[0])):
             x, y, rot = placement.at[ref]
-            w.writerow([ref, f"{x - x0:.4f}", f"{y1 - y:.4f}", "Top",
+            w.writerow([ref, f"{x:.4f}", f"{-y:.4f}", "Top",
                         f"{(rot + inst.part.rotation_offset) % 360:g}"])
 
 

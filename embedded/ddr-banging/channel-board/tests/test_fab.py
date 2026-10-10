@@ -51,9 +51,27 @@ def test_cpl_rotation_and_coordinates(tmp_path):
         want = (p.at[ref][2] + c.instances[ref].part.rotation_offset) % 360
         assert abs(float(rows[ref]["Rotation"]) - want) < 0.01
         assert rows[ref]["Layer"] == "Top"
-    # y is up from the outline's bottom-left corner (10, 60)
-    assert abs(float(rows[a]["Mid X"]) - 5.0) < 1e-6
-    assert abs(float(rows[a]["Mid Y"]) - 10.0) < 1e-6
+    # Gerber frame: x as in KiCad, y negated, whatever the outline origin
+    assert abs(float(rows[a]["Mid X"]) - 15.0) < 1e-6
+    assert abs(float(rows[a]["Mid Y"]) - -50.0) < 1e-6
+
+
+def test_cpl_matches_kicad_position_file(tmp_path):
+    import subprocess
+    from board.fab import KICAD_CLI
+    from board.kicad_pcb import write_board
+    pcb = tmp_path / "x.kicad_pcb"
+    write_board(C, P, pcb, layers=2)
+    pos = tmp_path / "pos.csv"
+    subprocess.run([KICAD_CLI, "pcb", "export", "pos", "--format", "csv", "--units", "mm",
+                    "--side", "front", "-o", str(pos), str(pcb)], check=True, capture_output=True)
+    want = {r["Ref"]: r for r in csv.DictReader(open(pos))}
+    write_cpl(C, P, tmp_path / "cpl.csv")
+    got = {r["Designator"]: r for r in csv.DictReader(open(tmp_path / "cpl.csv"))}
+    assert set(got) == set(want)
+    for ref, r in got.items():
+        assert abs(float(r["Mid X"]) - float(want[ref]["PosX"])) < 0.01, ref
+        assert abs(float(r["Mid Y"]) - float(want[ref]["PosY"])) < 0.01, ref
 
 
 def test_cpl_includes_through_hole_parts(tmp_path):
