@@ -63,3 +63,15 @@ def test_socket_rows_match_te_drawing():
         assert abs(_pad(n).y - y) < 0.01, n
     assert abs(_pad(49).y - _pad(1).y) < 0.01
     assert abs(_pad(48).y - _pad(2).y) < 0.01
+
+
+def test_socket_layers():
+    pads = part("DIMM").footprint.pads
+    numbered = [p for p in pads if p.number]
+    assert len(numbered) == 240
+    for p in numbered:
+        assert p.kind == "thru_hole" and "*.Cu" in p.layers, p.number
+    unnumbered = [p for p in pads if not p.number]
+    assert len(unnumbered) == 3
+    for p in unnumbered:
+        assert p.kind == "np_thru_hole" and "*.Cu" not in p.layers
