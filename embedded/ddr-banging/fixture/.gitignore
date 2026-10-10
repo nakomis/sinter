@@ -1,0 +1,12 @@
+# Generated — rebuild from dimm-pogo-fixture.scad and pcb/gen_pcb.py
+stl/
+pcb/gerbers-*/
+pcb/*.zip
+pcb/*-drc.rpt
+pcb/*-render.png
+pcb/*-layout.*
+pcb/*.kicad_prl
+pcb/fp-info-cache
+pcb/*-view.png
+pcb/both-view.png
+pcb/*.pdf
