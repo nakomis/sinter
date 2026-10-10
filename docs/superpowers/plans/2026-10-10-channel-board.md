@@ -856,7 +856,7 @@ def test_every_supply_pin_decoupled():
     u = C.instances["U1"].part
     for rail in ("VCCA", "VCCB"):
         caps = [r for r, i in C.instances.items() if i.part.key in ("C100N", "C1U")
-                and C.net_of(r, "1") == rail or C.net_of(r, "2") == rail]
+                and rail in (C.net_of(r, "1"), C.net_of(r, "2"))]
         assert len(caps) >= 2 * len(u.pins[rail]), rail
 
 
