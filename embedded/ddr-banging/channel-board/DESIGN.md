@@ -218,8 +218,8 @@ committing. Assembling only some of the five PCBs is an option.
   min 2, ~$6.84 each); wave-soldered, Economic or Standard PCBA. TE customer
   drawing C-1932000 rev H7 (`docs/ENG_CD_1932000_H7.pdf`, local): black housing,
   natural extractors, 15 µ" gold, 3.18 mm tails (TE's length for 2.36 mm PCB —
-  ~1.6 mm protrusion on our 1.6 mm board, acceptable; **1-1932000-0** is the
-  2.67 mm-tail twin for 1.6 mm PCB, prefer it if JLCPCB lists it).
+  ~1.6 mm protrusion on our 1.6 mm board, acceptable; **1-1932000-0, JLCPCB C5164821**, is the
+  2.67 mm-tail twin for 1.6 mm PCB — **preferred**; same drawing).
   Footprint (sheet 3): 240 × Ø0.70 ± 0.08 mm on 1.00 mm pitch, staggered rows,
   max 0.15 mm annular ring; Ø2.45 mm peg holes at both ends (datums D, E) and
   at the key, plus a 1.80 mm slot; keep-out 142 × 7.75 mm; extractor shadow
