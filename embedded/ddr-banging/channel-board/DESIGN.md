@@ -164,7 +164,8 @@ channel-board/
    C/A translators by the address pads; RP2354B central; USB-C on a short edge;
    headers on the far edge. Components ≥ 2.5 mm from edges except edge
    connectors.
-4. **Stack-up (4 layers):** L1 signal, L2 solid GND, L3 power (5 V / 3.3 V /
+4. **Board:** about 175 × 90 mm — the socket's ejectors span 165 mm open.
+   **Stack-up (4 layers):** L1 signal, L2 solid GND, L3 power (5 V / 3.3 V /
    1.5 V pours), L4 signal.
 5. **Routing:** Freerouting; then KiCad DRC against JLCPCB 4-layer rules, with
    margin: 0.15 mm track/space, 0.3 mm drill vias.
@@ -213,9 +214,13 @@ committing. Assembling only some of the five PCBs is an option.
 - RP2354B BOOTSEL: is QSPI_SS bonded out with in-package flash? If not, use the
   documented alternative bootloader entry.
 - RP2350 PIO cross-block IRQ (PREV/NEXT) for command/data SM sync.
-- DDR3 DIMM socket: no LCSC part found yet (candidates: TE 1-1932000-1, Molex
-  783210153, Amphenol 10081530-12207LF). If JLCPCB doesn't stock one: global
-  sourcing or consigned parts, else hand-fit.
+- DDR3 DIMM socket: **Amphenol FCI 10081530-11107LF (LCSC C4775483)** —
+  1.5 V centre key "XB" (DDR3, JEDEC MO-269), through-hole vertical, 2.67 mm
+  tails, three metal clips (ends + centre: needs the 2.45 mm centre hole),
+  black housing / ivory ejectors, 15 µ" gold. Footprint from sheet 3: 240 ×
+  Ø0.70 mm on 1.00 mm pitch, 2.45 mm peg holes, 142 mm max footprint, 165 mm
+  max with ejectors. Fallback: TE 1-1932000-1 (C5171640, pre-order, min 2).
+  Stock/price at JLCPCB to confirm.
 - I/O expander: TCA9534A out of stock at LCSC; PCA9534PWR (C133803) or PCA9554.
 - SN74AVC16T245DGGR = C148481 (~490 in stock — reserve via My Part Lib).
 - Is CK0/CK0# on the stick terminated differentially or to VTT?
