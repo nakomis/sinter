@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 PARTS=(
   C39843328 # RP2354B
-  C5164821  # DIMM
+  # DIMM (C5164821) omitted: EasyEDA returns 404, footprint is generated in Task 4
   C148481   # XLAT
   C34771    # VTTREG
   C133803   # EXPANDER

@@ -81,7 +81,10 @@ def _load(key, row):
     pins = {}
     for name, nums in raw.items():
         pins.setdefault(alias.get(name, name), []).extend(nums)
-    tht = any(p.kind == "thru_hole" for p in fp.pads)
+    # Through-hole only if most numbered signal pads are drilled; unnumbered thermal
+    # pads and mounting pegs (WSON EP, USB-C shell) do not make a part THT.
+    numbered = [p for p in fp.pads if p.number]
+    tht = bool(numbered) and sum(p.kind == "thru_hole" for p in numbered) * 2 > len(numbered)
     return PartDef(key, value, lcsc, fp, pins, load_symbol_pin_types(LCSC_SYM, sym), extended, tht, rot)
 
 
