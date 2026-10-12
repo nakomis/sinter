@@ -18,7 +18,9 @@ static uint32_t quarter_cycles;   // busy-wait per quarter clock
 static uint32_t tck_ns = 1000;    // measured period
 static bool driving;
 
-static const uint64_t outputs = CA_PINS_MASK | DIR_MASK | (1ull << PIN_RESETN);
+#define LANE_MASK (7ull << PIN_LANE0)   // decoder A/B/C: held at lane 0
+
+static const uint64_t outputs = CA_PINS_MASK | DIR_MASK | LANE_MASK | (1ull << PIN_RESETN);
 
 void bus_init(void)
 {
@@ -28,7 +30,9 @@ void bus_init(void)
     }
     // idle: CK low, CK# high, CKE low, both CS# high, RAS#/CAS#/WE# high
     uint64_t idle = CKN | ((uint64_t)ddr3_encode(DDR3_DES, 0, 0, false) << PIN_CA_BASE);
-    gpio_put_masked64(outputs | DQ_MASK | DQS_MASK, idle);   // RESET# low, DIR low (B->A)
+    // RESET# low, DIR low (B->A); DQS# output latch high so the first drive
+    // starts from DQS low / DQS# high
+    gpio_put_masked64(outputs | DQ_MASK | DQS_MASK, idle | DQSN);
     gpio_set_dir_masked64(outputs | DQ_MASK | DQS_MASK, outputs);
     driving = false;
     bus_set_tck(1000);
@@ -64,45 +68,56 @@ static inline void wait_q(void)
     busy_wait_at_least_cycles(quarter_cycles);
 }
 
-uint32_t bus_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_samples)
+// Each CK cycle is four quarters:
+//   t0  CK falls (end of previous cycle); command/address for this cycle
+//   t1  write data for the rising DQS edge; read beat 1 of the previous cycle
+//   t2  CK rises (DRAM registers the command); DQS rises on strobe cycles
+//   t3  write data for the falling DQS edge; read beat 0 of this cycle
+// so write data is centred on each DQS edge and reads sample mid-beat.
+uint32_t __not_in_flash_func(bus_run)(const ddr3_seq_t *s, bus_sample_t *samples,
+                                      unsigned max_samples)
 {
     unsigned n = 0;
     bool pending = false;   // previous cycle's beat 1 still to sample
     uint32_t irq = save_and_disable_interrupts();
     uint64_t t0 = time_us_64();
+    drive(false);
+    gpio_put_masked64(DQ_MASK | DQS_MASK, DQSN);   // output latches: the first drive starts clean
 
     for (size_t i = 0; i < s->len; i++) {
         const ddr3_cycle_t *c = &s->cycles[i];
         bool dr = c->flags & CY_DRIVE;
+        uint64_t strobe_m = dr ? DQS_MASK : 0;
 
-        // CK low half: present the command, and data for the rising DQS edge
+        // t0: CK low half. DQS low / DQS# high whenever driven (incl. preamble)
         drive(dr);
-        uint64_t v = (uint64_t)c->ca << PIN_CA_BASE | CKN | DQSN;
-        uint64_t m = CA_ONLY | CK | CKN;
-        if (dr) {
-            v |= (uint64_t)c->dq[0] << PIN_DQ0;
-            m |= DQ_MASK | DQS_MASK;
-        }
-        gpio_put_masked64(m, v);
+        gpio_put_masked64(CA_ONLY | CK | CKN | strobe_m,
+                          (uint64_t)c->ca << PIN_CA_BASE | CKN | (dr ? DQSN : 0));
         wait_q();
+        // t1
         if (pending) {   // only ever set after a sample was stored
             samples[n - 1].beat[1] = gpio_get_all64() & 0x3FF;
             pending = false;
         }
+        if (dr) gpio_put_masked64(DQ_MASK, (uint64_t)c->dq[0] << PIN_DQ0);
         wait_q();
-
-        // CK high half
-        uint64_t hi = CK;
-        if (c->flags & CY_STROBE) hi |= DQS;
-        gpio_put_masked64(CK | CKN | (dr ? DQS_MASK : 0), hi);
+        // t2: CK high half. DQS and DQS# always complementary
+        uint64_t strobe = (c->flags & CY_STROBE) ? DQS : DQSN;
+        gpio_put_masked64(CK | CKN | strobe_m, CK | (dr ? strobe : 0));
         wait_q();
+        // t3
         if (dr) gpio_put_masked64(DQ_MASK, (uint64_t)c->dq[1] << PIN_DQ0);
         if ((c->flags & CY_SAMPLE) && samples && n < max_samples) {
             samples[n++].beat[0] = gpio_get_all64() & 0x3FF;
             pending = true;
         }
         wait_q();
-        gpio_put_masked64(CK | CKN | (dr ? DQS_MASK : 0), CKN | (dr ? DQSN : 0));
+    }
+    // final falling edge
+    gpio_put_masked64(CK | CKN | (driving ? DQS_MASK : 0), CKN | (driving ? DQSN : 0));
+    if (pending) {
+        wait_q();
+        samples[n - 1].beat[1] = gpio_get_all64() & 0x3FF;
     }
     drive(false);
 
@@ -143,9 +158,11 @@ void bus_hold(int gpio)
         return;
     }
     uint64_t bit = 1ull << gpio;
-    if (bit & (DQ_MASK | DQS_MASK)) {
+    if (bit & (DQ_MASK | DQS_MASK | DIR_MASK)) {
+        // through the translator: drive the A side (low) before turning DIR on
         drive(true);
-        gpio_put_masked64(outputs | DQ_MASK | DQS_MASK, DIR_MASK | bit);
+        uint64_t dir = (bit & DIR_MASK) ? bit : DIR_MASK;
+        gpio_put_masked64(outputs | DQ_MASK | DQS_MASK, dir | (bit & ~DIR_MASK));
     } else {
         gpio_put_masked64(outputs, bit);
     }

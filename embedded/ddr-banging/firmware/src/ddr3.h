@@ -125,7 +125,8 @@ void ddr3_seq_read(ddr3_seq_t *s, uint32_t byte_addr);
 // Index of the first sampled cycle of the most recent read (for decoding).
 size_t ddr3_seq_last_read_start(const ddr3_seq_t *s);
 
-// Self-refresh entry/exit. Exit waits tXSDLL (512 CK) with REFs.
+// Self-refresh entry/exit. Entry first pays off any postponed REFs; exit
+// waits tXSDLL (512 CK) with REFs.
 void ddr3_seq_sre(ddr3_seq_t *s);
 void ddr3_seq_srx(ddr3_seq_t *s);
 

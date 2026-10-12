@@ -104,7 +104,7 @@ void ddr3_seq_cmd(ddr3_seq_t *s, ddr3_cmd_t cmd, unsigned ba, unsigned addr)
     if (cmd == DDR3_REF) {
         // pay off one tREFI of refresh debt; postponed REFs stay owed
         s->since_ref = s->since_ref > s->ref_interval ? s->since_ref - s->ref_interval : 0;
-        s->ref_hold = ddr3_ck(s, TRFC_NS, 1);
+        s->ref_hold = ddr3_ck(s, TRFC_NS, 1) - 1;   // cycles still inside tRFC
     }
     if (cmd == DDR3_ACT) s->open_banks |= 1u << (ba & 7u);
     if (cmd == DDR3_PRE) s->open_banks = (addr & (1u << 10)) ? 0 : s->open_banks & ~(1u << (ba & 7u));
@@ -211,6 +211,10 @@ void ddr3_seq_sre(ddr3_seq_t *s)
 {
     ddr3_seq_cmd(s, DDR3_PRE, 0, 1u << 10);
     nops(s, ddr3_ck(s, TRP_NS, 1));
+    // pay off postponed REFs: JEDEC counts them across self-refresh
+    uint32_t trfc = ddr3_ck(s, TRFC_NS, 1);
+    while (s->since_ref >= s->ref_interval && !s->overflow)
+        ddr3_seq_idle(s, trfc + 1);
     s->cke = false;
     ddr3_seq_cmd(s, DDR3_REF, 0, 0);            // REF with CKE low = SRE
     nops(s, 5);                                 // tCKSRE / tCKESR with clock running

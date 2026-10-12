@@ -158,6 +158,17 @@ static void test_postponed_refreshes_are_caught_up(void)
     CHECK(refs >= 5);
 }
 
+static void test_refs_back_to_back_when_trfc_fits_a_clock(void)
+{
+    ddr3_seq_t s;
+    ddr3_seq_init(&s, buf, 4096, 1000);  // tRFC 110 ns < 1 CK
+    s.cke = true;
+    s.since_ref = 50;                    // 7 REFs owed
+    ddr3_seq_idle(&s, 10);
+    long first = find(&s, DDR3_REF, 0);
+    CHECK_EQ(find(&s, DDR3_REF, (size_t)first + 1), first + 1);
+}
+
 static void test_refs_respect_trfc_at_fast_clock(void)
 {
     ddr3_seq_t s;
@@ -173,6 +184,55 @@ static void test_refs_respect_trfc_at_fast_clock(void)
         CHECK(s.len - i > 14);          // its tRFC fits inside the idle window
         last = (long)i;
     }
+}
+
+// Postponed REFs at any point: owed = elapsed / tREFI - REFs issued.
+static long worst_postponed(const ddr3_seq_t *s, size_t from, long owed0)
+{
+    long refs = 0, worst = 0;
+    double per = 7800.0 / s->tck_ns;
+    for (size_t i = from; i < s->len; i++) {
+        if (decode(s->cycles[i].ca) == DDR3_REF) refs++;
+        long owed = owed0 + (long)((i - from + 1) / per) - refs;
+        if (owed > worst) worst = owed;
+    }
+    return worst;
+}
+
+static void test_refresh_keeps_pace_up_to_3900ns(void)
+{
+    const uint32_t tcks[] = { 250, 1000, 2000, 3000, 3900 };
+    for (int k = 0; k < 5; k++) {
+        ddr3_seq_t s;
+        ddr3_seq_init(&s, buf, 4096, tcks[k]);
+        s.cke = true;
+        ddr3_seq_idle(&s, 2000);
+        CHECK(worst_postponed(&s, 0, 0) <= 1);
+        // a write keeps its row open for less than tRAS(max) = 9 x tREFI
+        ddr3_seq_init(&s, buf, 4096, tcks[k]);
+        s.cke = true;
+        const uint8_t d[8] = { 0 };
+        ddr3_seq_write(&s, 0, d);
+        long act = find(&s, DDR3_ACT, 0), pre = find(&s, DDR3_PRE, 0);
+        CHECK((pre - act) * (long)tcks[k] < 9 * 7800);
+    }
+}
+
+static void test_command_session_stays_within_8_postponed(void)
+{
+    ddr3_seq_t s;
+    ddr3_seq_init(&s, buf, 4096, 1000);
+    const uint8_t d[8] = { 0 };
+    for (int k = 0; k < 4; k++) {   // four shell commands back to back
+        ddr3_seq_srx(&s);
+        if (k % 2) ddr3_seq_read(&s, 0x40);
+        else ddr3_seq_write(&s, 0x40, d);
+        size_t before_sre = s.len;
+        ddr3_seq_sre(&s);
+        CHECK(s.since_ref < s.ref_interval);   // debt paid before self-refresh
+        (void)before_sre;
+    }
+    CHECK(!s.overflow);
 }
 
 static void test_init_mrs(void)
@@ -325,7 +385,10 @@ void test_ddr3(void)
     RUN(test_idle_refreshes_when_banks_closed);
     RUN(test_idle_never_refreshes_with_open_bank);
     RUN(test_postponed_refreshes_are_caught_up);
+    RUN(test_refs_back_to_back_when_trfc_fits_a_clock);
     RUN(test_refs_respect_trfc_at_fast_clock);
+    RUN(test_refresh_keeps_pace_up_to_3900ns);
+    RUN(test_command_session_stays_within_8_postponed);
     RUN(test_init_mrs);
     RUN(test_write_burst);
     RUN(test_read_burst);
