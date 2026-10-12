@@ -4,6 +4,28 @@ Researched 2026-10-12. Target: 2 GB 2Rx8 PC3-10600E ECC UDIMM, Samsung K4B1G0846
 
 **Provenance caveat.** I could not retrieve the Samsung K4B1G0846F or M391B5673FH0 datasheets themselves (see section 1). Nearly all hard numbers below come from the **Micron 1 Gb DDR3 datasheet (MT41J128M8, Rev. L 03/13)**, which is the same density, organisation and JEDEC DDR3-800 to 1600 family, and from a Micron UDIMM datasheet. Samsung's F-die should match on JEDEC-mandated items, but any Samsung-specific limits (notably a maximum tCK in DLL-off) are unverified. Downloaded copies are in `/private/tmp/claude-501/ddr-research/` (`micron1g.pdf`, `mt9.pdf`), not in the repo.
 
+## 0. Samsung module datasheet (added 2026-10-12)
+
+Martin found Samsung's *DDR3 1Gb F-die Unbuffered DIMM* datasheet, Rev. 1.22
+(Apr 2011), covering M378/M391B2873FH0 and M378/M391B5673FH0, our exact
+module. Local copy: `docs/K4B1G0846F-HCH9 datasheet pdf.pdf` (not committed).
+It settles the main open question:
+
+- **tCK(DLL_OFF): 8 ns minimum, no maximum.** Note 6 to the AC timing table:
+  the only cycle-time limit is having to meet the refresh interval, tREFI.
+  Micron's 7.8 µs "cap" is that same constraint. The firmware caps at 3.9 µs
+  so its REF scheduling and tRAS(max) hold, not because the DRAM needs it.
+- **tRFC = 110 ns** (1 Gb), **tREFI = 7.8 µs** below 85 °C, 3.9 µs from 85 to
+  95 °C; tRAS(max) = 9 × tREFI. All match what the firmware assumes.
+- **Raw card E (2Rx8 ECC) carries a thermal sensor** sharing the SPD's I2C
+  bus (SA0-2 strap both). JEDEC TSE2002-style: SPD EEPROM at 0x50, sensor at
+  0x18 with SA = 0. The firmware's `temp` command reads it.
+- CK1/CK1# drive the second rank; on a dual-rank UDIMM they're "used", so
+  rank 0 needs only CK0/CK0#.
+- RZQ = 240 Ω ± 1 %.
+
+Confidence: high (vendor datasheet for the exact module).
+
 ## 1. Datasheet availability
 
 **Finding.** No directly downloadable Samsung K4B1G0846F or M391B5673FH0 datasheet was found.

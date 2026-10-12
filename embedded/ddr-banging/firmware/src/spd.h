@@ -29,6 +29,12 @@ typedef struct {
 } spd_info_t;
 
 uint16_t spd_crc16(const uint8_t *p, unsigned n);
+
+// On-module thermal sensor (JEDEC TSE2002, raw cards D and E), register 5.
+#define TSE_I2C_ADDR 0x18
+#define TSE_REG_TEMP 0x05
+// Temperature in 1/16 °C from the 16-bit register value (flag bits ignored).
+int spd_tse_sixteenths(uint16_t raw);
 void spd_decode(const uint8_t raw[SPD_LEN], spd_info_t *out);
 
 #endif

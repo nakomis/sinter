@@ -37,6 +37,7 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
 | Command | What |
 |---|---|
 | `spd` | Read the SPD EEPROM over I2C and decode it. Proves the fixture. |
+| `temp` | Module temperature from the on-DIMM thermal sensor (0x18). |
 | `init` | RESET#, then DLL-off init (MR2, MR3, MR1, MR0, ZQCL), then self-refresh. |
 | `w <addr> <hex16>` | Write one 8-byte burst. |
 | `r <addr>` | Read one burst; prints the whole sample window with DQS levels. |

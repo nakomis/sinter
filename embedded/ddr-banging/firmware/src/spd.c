@@ -46,3 +46,9 @@ void spd_decode(const uint8_t s[SPD_LEN], spd_info_t *o)
     for (int i = 17; i >= 0 && (o->part[i] == ' ' || o->part[i] == 0); i--)
         o->part[i] = 0;
 }
+
+int spd_tse_sixteenths(uint16_t raw)
+{
+    int v = raw & 0x0FFF;           // bits 11:0, 1/16 °C
+    return (raw & 0x1000) ? v - 0x1000 : v;   // bit 12: sign (13-bit two's complement)
+}

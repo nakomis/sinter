@@ -84,6 +84,19 @@ static void cmd_spd(void)
            (unsigned long)d.taa_min_ps, d.cas_latencies);
 }
 
+static void cmd_temp(void)
+{
+    uint8_t reg = TSE_REG_TEMP, b[2];
+    if (i2c_write_blocking(i2c1, TSE_I2C_ADDR, &reg, 1, true) != 1 ||
+        i2c_read_blocking(i2c1, TSE_I2C_ADDR, b, 2, false) != 2) {
+        printf("no thermal sensor at 0x%02x\n", TSE_I2C_ADDR);
+        return;
+    }
+    int t = spd_tse_sixteenths((uint16_t)(b[0] << 8 | b[1]));
+    printf("module %d.%02d C%s\n", t / 16, (abs(t) % 16) * 100 / 16,
+           t >= 85 * 16 ? "  (>= 85 C: tREFI halves to 3.9 us)" : "");
+}
+
 static void cmd_init(void)
 {
     // RESET# low >= 200 us with CKE low, then 500 us before CKE goes high
@@ -270,6 +283,7 @@ static void cmd_walk(char *arg)
 static void help(void)
 {
     printf("spd                 read and decode the SPD EEPROM\n"
+           "temp                module temperature (on-DIMM thermal sensor)\n"
            "init                reset + DLL-off mode-register init, then self-refresh\n"
            "w <addr> <hex16>    write one 8-byte burst\n"
            "r <addr>            read one burst, showing the raw sample window\n"
@@ -286,6 +300,7 @@ static void dispatch(char *line)
     char *a2 = strtok(NULL, " \t");
     if (!cmd) return;
     if (!strcmp(cmd, "spd")) cmd_spd();
+    else if (!strcmp(cmd, "temp")) cmd_temp();
     else if (!strcmp(cmd, "init")) cmd_init();
     else if (!strcmp(cmd, "w")) cmd_write(a1, a2);
     else if (!strcmp(cmd, "r")) cmd_read(a1);

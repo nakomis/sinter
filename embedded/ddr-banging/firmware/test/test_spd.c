@@ -91,6 +91,14 @@ static void test_not_ddr3(void)
     CHECK(!i.is_ddr3);
 }
 
+static void test_thermal_sensor_decode(void)
+{
+    CHECK_EQ(spd_tse_sixteenths(0x0190), 25 * 16);   // +25 °C
+    CHECK_EQ(spd_tse_sixteenths(0xE190), 25 * 16);   // alarm flags ignored
+    CHECK_EQ(spd_tse_sixteenths(0x1FF0), -16);       // -1 °C
+    CHECK_EQ(spd_tse_sixteenths(0x0558), 85 * 16 + 8);   // 85.5 °C
+}
+
 void test_spd(void)
 {
     RUN(test_crc_reference_value);
@@ -98,4 +106,5 @@ void test_spd(void)
     RUN(test_bad_crc_detected);
     RUN(test_crc_range_follows_byte0);
     RUN(test_not_ddr3);
+    RUN(test_thermal_sensor_decode);
 }
