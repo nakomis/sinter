@@ -46,6 +46,7 @@ sinter/
     esp32/      # ESP32 firmware: agentic loop, Forth-to-x86-64 compiler, orchestration
     fpga/       # HDL for Tang Primer 20K: DDR3 bridge, PCIe endpoint, SATA controller
     phenom/     # Bare-metal x86: bootloader, kernel modules, MSR tooling
+  forth/        # Forth-to-x86-64 compiler: portable C11 library, host tests (SINT-25)
   docs/
     architecture/   # draw.io source and generated SVGs
 ```

@@ -22,6 +22,7 @@ embedded/
   esp32/      # ESP32 firmware: orchestration, Forth-to-x86-64 compiler, Ollama client
   fpga/       # HDL (Verilog): DDR3 controller, PCIe Gen1 endpoint, SATA, SPI slave, HDMI
   phenom/     # Bare-metal x86: bootloader, kernel modules, MSR tooling, BIOS analysis
+forth/        # Forth-to-x86-64 compiler: dependency-free C11 library + host tests
 docs/
   architecture/   # draw.io source + generated SVGs
 ```
@@ -31,6 +32,7 @@ docs/
 - **ESP32**: ESP-IDF (C/C++)
 - **FPGA**: GOWIN EDA toolchain (`gw_sh`) for Tang Primer 20K
 - **Phenom II bare-metal**: cross-compiled x86-64 with `x86_64-elf-gcc`
+- **Forth compiler** (`forth/`): plain C11, `make test` on Linux or macOS (gcc or clang, `-Wall -Wextra -Werror`); execution tests need an x86-64 host
 - **Phenom II kernel modules**: standard Linux kernel module build system (Ubuntu)
 
 ## Architecture diagrams
