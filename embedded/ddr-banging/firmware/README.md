@@ -3,7 +3,9 @@
 RP2350B bring-up firmware for driving one x8 chip of a DDR3 UDIMM: SPD read,
 DLL-off initialisation, and single 8-byte bursts, driven from a USB serial
 shell. Target board: Waveshare Core2350B. Pin map: the channel board's
-(`../channel-board/DESIGN.md` §2), plus RESET# on GPIO 15 (spike only).
+(`../channel-board/DESIGN.md` §2), plus RESET# on GPIO 12 (spike only: the
+channel board's lane decoder pin, which the spike doesn't have). The ESP32
+link is SPI1 on GPIO 44-46 plus TX on 15, never 47 (the Core2350B's PSRAM CSn).
 
 ## Build
 
@@ -23,8 +25,11 @@ make flash   # picotool load (hold BOOTSEL while plugging in the first time)
 | `src/ddr3.c` | Command encoding, mode registers, address split, and the cycle-by-cycle sequence builder (init, read, write, self-refresh, auto-inserted REFs). Pure logic. |
 | `src/spd.c` | DDR3 SPD decode and CRC. Pure logic. |
 | `src/bus_gpio.c` | Plays a sequence out by bit-banging, CPU-timed in quarter clocks. Interrupts off while it runs. |
-| `src/main.c` | The shell. |
-| `test/` | Host tests (`make test`). |
+| `src/dram.c` | Init and whole-burst reads and writes, shared by the shell and the link. Self-refresh between operations. |
+| `src/link.c` | ESP32 link, slave side: acts on complete frames of `../proto/ddrlink.h`. Pure logic. |
+| `src/link_spi.c` | The link's transport: SPI1 as a mode-3 slave, DMA both ways, CS interrupts, READY. |
+| `src/main.c` | The shell, and the link's memory backend. |
+| `test/` | Host tests (`make test`). `test/jedec.c` is an independent JEDEC timing checker: every sequence the firmware builds, at every clock it allows, read back off the simulated pins. |
 
 A sequence is a list of CK cycles, each with a command/address word and data
 flags (drive, strobe, sample). The executor is deliberately dumb so a PIO
@@ -42,9 +47,10 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
 | `w <addr> <hex16>` | Write one 8-byte burst. |
 | `r <addr>` | Read one burst; prints the whole sample window with DQS levels. |
 | `t [addr] [n]` | Write then verify `n` bursts of a pattern. |
-| `tck [ns]` | Show or set the clock period (250 to 3900 ns; default 1000). |
+| `tck [ns]` | Show or set the clock period (250 to 3400 ns; default 1000). |
 | `hold <line>` / `hold off` | One line high, everything else low, for continuity checks. |
 | `walk [ms]` | Step `hold` through every line. |
+| `link` | ESP32 link statistics: command frames, errors, last error. |
 
 ## Wiring notes (spike)
 
@@ -53,19 +59,21 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
 - ODT0, CKE1, S1#, SA0-2 are tied on the breakout boards. CS1# is driven
   high anyway.
 - GPIO 12-14 (the channel board's lane decoder) are held low, selecting
-  lane 0; unused on the spike. On the channel board RESET# comes from the I/O
-  expander rather than GPIO 15, so `bus_reset()` will need porting there.
+  lane 0; unused on the spike, where GPIO 12 is RESET# instead. On the channel
+  board RESET# comes from the I/O expander, so `bus_reset()` will need porting
+  there.
 
 ## Timing choices
 
 - **DLL off**, CL = CWL = 6, BL8, ODT off. Read data arrives CL - 1 clocks
   after READ. The read window samples a cycle either side, so a wrong
   assumption shows up as data shifted in the window rather than garbage.
-- **Clock 1 MHz by default.** DLL-off needs tCK ≥ 8 ns, and Micron's 1 Gb
-  sheet caps it at 7.8 µs (3.9 µs above 85 °C). Above ~3.9 µs the REFs can't
-  keep pace and an open row exceeds tRAS(max), so the shell allows 250 ns to
-  3.9 µs. Near 250 ns the bit-bang loop is the limit; `tck` reports the
-  measured period.
+- **Clock 1 MHz by default.** DLL-off needs tCK ≥ 8 ns, and Samsung sets no
+  maximum beyond meeting refresh. The firmware's limit is refresh: no REF can
+  go in while a row is open, and a write holds its row until the next REF for
+  up to 18 clocks, while JEDEC allows only 8 REFs postponed. 18 × tCK ≤
+  8 × tREFI gives the shell's 3.4 µs cap; `test/jedec.c` checks it. Near
+  250 ns the bit-bang loop is the limit; `tck` reports the measured period.
 - **Refresh:** at 1 MHz a REF is due every 7 clocks. The sequence builder
   inserts them whenever every bank is closed, and pays back REFs postponed
   while a row was open (up to 8 may be postponed), paying them all off before
@@ -75,3 +83,25 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
   work, and re-enters.
 - MR0 DLL reset is skipped, as is tDLLK. If reads misbehave, try adding them
   (see `../datasheet-notes.md`).
+
+## ESP32 link (milestone 10)
+
+Protocol: `../proto/ddrlink.h`. Client: `../esp32-client/`. While the shell
+runs a command, READY stays low and the ESP32 waits.
+
+| GPIO | Signal | ESP32-S3 (test app) |
+|---|---|---|
+| 44 | SPI1 RX ← MOSI | 11 |
+| 45 | SPI1 CSn ← CS | 10 |
+| 46 | SPI1 SCK ← SCK | 12 |
+| 15 | SPI1 TX → MISO | 13 |
+| 41 | READY → | 9 |
+
+Both sides are 3.3 V: wire them directly, with a common GND. SPI mode 3, at up
+to ~12 MHz (the RP2350 slave needs clk_peri ≥ 12 × SCK).
+
+Reads and writes share one self-refresh exit between up to 256 bursts (2 KB),
+paying the REFs owed after every burst. That's about 380 KB/s at 1 MHz, so
+128 MB takes about 6 minutes each way, plus the SPI time. Each burst still
+opens and closes its own row; keeping a row open for several bursts (within
+tRAS max) is milestone 11.

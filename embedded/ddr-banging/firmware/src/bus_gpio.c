@@ -18,7 +18,8 @@ static uint32_t quarter_cycles;   // busy-wait per quarter clock
 static uint32_t tck_ns = 1000;    // measured period
 static bool driving;
 
-#define LANE_MASK (7ull << PIN_LANE0)   // decoder A/B/C: held at lane 0
+// decoder A/B/C: held at lane 0 (on the spike, RESET# borrows the first pin)
+#define LANE_MASK ((7ull << PIN_LANE0) & ~(1ull << PIN_RESETN))
 
 static const uint64_t outputs = CA_PINS_MASK | DIR_MASK | LANE_MASK | (1ull << PIN_RESETN);
 

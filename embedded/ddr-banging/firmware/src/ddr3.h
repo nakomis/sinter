@@ -122,6 +122,11 @@ void ddr3_seq_read(ddr3_seq_t *s, uint32_t byte_addr);
 #define DDR3_READ_WINDOW_BEFORE 1   // cycles sampled before RL
 #define DDR3_READ_WINDOW_CYCLES 7   // cycles sampled in all
 
+// With every bank closed, issue every REF owed (then wait out the last
+// tRFC). Between back-to-back bursts there is no idle gap for
+// ddr3_seq_idle() to slot REFs into, so callers batching bursts use this.
+void ddr3_seq_catch_up(ddr3_seq_t *s);
+
 // Index of the first sampled cycle of the most recent read (for decoding).
 size_t ddr3_seq_last_read_start(const ddr3_seq_t *s);
 

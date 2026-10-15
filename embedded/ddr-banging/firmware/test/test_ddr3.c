@@ -235,6 +235,44 @@ static void test_command_session_stays_within_8_postponed(void)
     CHECK(!s.overflow);
 }
 
+// What dram.c builds for a 1 KB transfer: one self-refresh exit, 128 bursts
+// each followed by a refresh catch-up, then self-refresh entry.
+static void test_batched_bursts_keep_refresh_pace(void)
+{
+    static ddr3_cycle_t big[8192];
+    const uint32_t tcks[] = { 250, 1000, 2000, 3000, 3900 };
+    const uint8_t d[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+    for (int k = 0; k < 5; k++)
+        for (int rd = 0; rd < 2; rd++) {
+            ddr3_seq_t s;
+            ddr3_seq_init(&s, big, 8192, tcks[k]);
+            ddr3_seq_srx(&s);
+            size_t from = s.len;
+            for (int j = 0; j < 128; j++) {
+                if (rd) ddr3_seq_read(&s, 8u * j);
+                else ddr3_seq_write(&s, 8u * j, d);
+                ddr3_seq_catch_up(&s);
+                CHECK(s.since_ref < s.ref_interval);
+            }
+            ddr3_seq_sre(&s);
+            CHECK(!s.overflow);
+            CHECK(worst_postponed(&s, from, 0) <= 8);
+        }
+}
+
+static void test_self_refresh_entry_converges_when_slow(void)
+{
+    ddr3_seq_t s;
+    ddr3_seq_init(&s, buf, 4096, 3900);   // tREFI is 2 CK
+    s.cke = true;
+    s.since_ref = 8 * s.ref_interval;    // the most a command may leave owed
+    ddr3_seq_sre(&s);
+    CHECK(!s.overflow);
+    int refs = 0;   // the 8 owed, then the SRE (a REF with CKE low)
+    for (size_t i = 0; i < s.len; i++) refs += decode(s.cycles[i].ca) == DDR3_REF;
+    CHECK(refs >= 9);
+}
+
 static void test_init_mrs(void)
 {
     ddr3_seq_t s;
@@ -389,6 +427,8 @@ void test_ddr3(void)
     RUN(test_refs_respect_trfc_at_fast_clock);
     RUN(test_refresh_keeps_pace_up_to_3900ns);
     RUN(test_command_session_stays_within_8_postponed);
+    RUN(test_batched_bursts_keep_refresh_pace);
+    RUN(test_self_refresh_entry_converges_when_slow);
     RUN(test_init_mrs);
     RUN(test_write_burst);
     RUN(test_read_burst);

@@ -118,7 +118,7 @@ PIO blocks see a 32-pin window based at GPIO 0 or GPIO 16.
 | 10 | DIR_DQ | |
 | 11 | DIR_DQS | |
 | 12–14 | LANE0–2 | decoder A/B/C |
-| 15 | spare | to header |
+| 15 | SPI TX | ESP32 link MISO; SPI1 TX function. Moved off 47 (the Core2350B's PSRAM CSn) so the spike and this board share one map |
 | 16 | CK | command PIO (window 16–47); also visible to data PIO |
 | 17 | CK# | |
 | 18 | CKE | both ranks |
@@ -128,7 +128,8 @@ PIO blocks see a 32-pin window based at GPIO 0 or GPIO 16.
 | 27–40 | A0–A13 | A10 = AP |
 | 41 | READY | to ESP32 |
 | 42, 43 | I2C1 SDA, SCL | SPD (0x50), PCA9534; pull-ups to 3.3 V |
-| 44–47 | SPI RX, CSn, SCK, TX | ESP32 link; SPI1 function pins, or PIO |
+| 44–46 | SPI RX, CSn, SCK | ESP32 link; SPI1 function pins, mode 3 slave |
+| 47 | spare | to header |
 
 The command and data state machines live in different PIO blocks and are
 synchronised with RP2350 cross-block IRQs (to verify — see Open items).

@@ -6,6 +6,9 @@ gigabytes of RAM. Plane epic: **SINT-100**.
 | Path | What |
 |---|---|
 | `RUNBOOK.md` | Bring-up, step by step: parcel to first burst, with what "good" looks like at each step |
+| `firmware/` | RP2350B bring-up firmware: shell, DLL-off DDR3 sequences, ESP32 link (slave) |
+| `proto/` | `ddrlink`: the ESP32 ↔ RP2350B SPI protocol, shared by both sides |
+| `esp32-client/` | ESP-IDF component `ddrbang` (the ESP32's API to the DIMM) and the 128 MB write/verify test |
 | `pogo-pins.md` | Which DIMM pads the fixture contacts, and what each carries |
 | `fixture/dimm-pogo-fixture.scad` | Resin pogo-pin fixture (Elegoo Mars 5 Ultra): two jaws, floor, end stops, notch key, hole test strip, insertion gauge |
 | `fixture/pcb/gen_pcb.py` | Generates the two breakout PCBs (KiCad) from the `.scad`'s numbers |

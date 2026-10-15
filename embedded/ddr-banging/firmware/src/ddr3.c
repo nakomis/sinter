@@ -153,6 +153,9 @@ void ddr3_seq_init_mrs(ddr3_seq_t *s)
 
 static void open_row(ddr3_seq_t *s, ddr3_addr_t x)
 {
+    // no REF can be issued while the row is open, and at tCK 3.4 us a burst
+    // keeps it open for ~7 tREFI: start with nothing owed (JEDEC: <= 8 postponed)
+    if (!s->open_banks) ddr3_seq_catch_up(s);
     ddr3_seq_cmd(s, DDR3_ACT, x.bank, x.row);
     nops(s, ddr3_ck(s, TRCD_NS, 1) - 1);
 }
@@ -207,14 +210,21 @@ size_t ddr3_seq_last_read_start(const ddr3_seq_t *s)
     return s->last_read;
 }
 
+void ddr3_seq_catch_up(ddr3_seq_t *s)
+{
+    // REFs back to back as tRFC allows. Each REF cycle pays a whole tREFI
+    // and costs one CK (plus tRFC), so this converges even when tREFI is
+    // only 2 CK; idling for tRFC + 1 per REF would not.
+    while (s->since_ref >= s->ref_interval && !s->overflow)
+        ddr3_seq_cmd(s, s->ref_hold ? DDR3_NOP : DDR3_REF, 0, 0);
+    nops(s, s->ref_hold);
+}
+
 void ddr3_seq_sre(ddr3_seq_t *s)
 {
     ddr3_seq_cmd(s, DDR3_PRE, 0, 1u << 10);
     nops(s, ddr3_ck(s, TRP_NS, 1));
-    // pay off postponed REFs: JEDEC counts them across self-refresh
-    uint32_t trfc = ddr3_ck(s, TRFC_NS, 1);
-    while (s->since_ref >= s->ref_interval && !s->overflow)
-        ddr3_seq_idle(s, trfc + 1);
+    ddr3_seq_catch_up(s);   // postponed REFs: JEDEC counts them across self-refresh
     s->cke = false;
     ddr3_seq_cmd(s, DDR3_REF, 0, 0);            // REF with CKE low = SRE
     nops(s, 5);                                 // tCKSRE / tCKESR with clock running
