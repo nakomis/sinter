@@ -13,7 +13,8 @@ Needs pico-sdk 2.2.0 and the Arm GNU toolchain (paths are the Makefile
 defaults; override with `PICO_SDK_PATH` / `PICO_TOOLCHAIN_PATH`).
 
 ```sh
-make test    # host unit tests: command encoding, timing, refresh, SPD decoding
+git submodule update --init   # once: epio + apio, the host PIO emulator
+make test    # host unit tests: command encoding, timing, refresh, SPD decoding, PIO
 make         # build/ddr_banging.uf2
 make flash   # picotool load (hold BOOTSEL while plugging in the first time)
 ```
@@ -30,6 +31,9 @@ make flash   # picotool load (hold BOOTSEL while plugging in the first time)
 | `src/link.c` | ESP32 link, slave side: acts on complete frames of `../proto/ddrlink.h`. Pure logic. |
 | `src/link_spi.c` | The link's transport: SPI1 as a mode-3 slave, DMA both ways, CS interrupts, READY. |
 | `src/main.c` | The shell, and the link's memory backend. |
+| `src/pio/` | PIO programs: `ddr3_cmd.pio` (command/address + CK) so far. Assembled by pioasm, which the host tests build from the pico-sdk. |
+| `test/third_party/` | Submodules: nakomis/epio (host RP2350 PIO emulator, tag `v0.2.2-nakomis.2`) and apio v0.3.0, its headers. |
+| `test/pio_sim.c` | Runs PIO programs under epio, fed like DMA, recording the pins into the same log the JEDEC checker and DRAM model read. |
 | `test/` | Host tests (`make test`). `test/jedec.c` is an independent JEDEC timing checker: every sequence the firmware builds, at every clock it allows, read back off the simulated pins. `test/dram_model.c` is a behavioural DRAM on the same pins: it stores writes at their DQS edges and drives reads at RL, so `dram_write`/`dram_read` are tested byte for byte. |
 
 A sequence is a list of CK cycles, each with a command/address word and data
