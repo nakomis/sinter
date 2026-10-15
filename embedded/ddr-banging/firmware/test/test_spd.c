@@ -21,6 +21,8 @@ static void stick(uint8_t s[SPD_LEN])
     s[12] = 0x0C;         // tCKmin = 12 MTB = 1.5 ns (DDR3-1333)
     s[14] = 0x3E; s[15] = 0x00;  // CL 5..9
     s[16] = 0x6C;         // tAAmin = 108 MTB = 13.5 ns
+    s[31] = 0x01;         // extended temperature range, 2x refresh there, no ASR
+    s[32] = 0x80;         // thermal sensor fitted (raw card E)
     memcpy(&s[128], "M391B5673FH0-CH9  ", 18);
     uint16_t crc = spd_crc16(s, 117);
     s[126] = crc & 0xFF;
@@ -56,6 +58,10 @@ static void test_decode_test_stick(void)
     CHECK_EQ(i.taa_min_ps, 13500);
     CHECK_EQ(i.cas_latencies, 0x003E);
     CHECK(strcmp(i.part, "M391B5673FH0-CH9") == 0);
+    CHECK(i.ext_temp);
+    CHECK(!i.ext_temp_1x);
+    CHECK(!i.asr);
+    CHECK(i.thermal_sensor);
 }
 
 static void test_bad_crc_detected(void)

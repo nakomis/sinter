@@ -8,7 +8,7 @@
 #include "sim.h"
 
 // DDR3-1333 (-H9) minimums, ns, and DLL-off latencies
-#define T_REFI   7800.0
+static double T_REFI = 7800.0;   // 3900 above 85 C: jedec_set_hot()
 #define T_RFC    110.0      // 1 Gb
 #define T_RCD    13.5
 #define T_RP     13.5
@@ -53,6 +53,11 @@ typedef struct {
 } st_t;
 
 static const double NEVER = -1e18;
+
+void jedec_set_hot(bool hot)
+{
+    T_REFI = hot ? 3900.0 : 7800.0;
+}
 
 static void fail(st_t *s, double t, const char *what, double got, double need)
 {

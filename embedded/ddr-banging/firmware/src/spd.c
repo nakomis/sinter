@@ -41,6 +41,11 @@ void spd_decode(const uint8_t s[SPD_LEN], spd_info_t *o)
     o->taa_min_ps = s[16] * mtb_ps;
     o->cas_latencies = (uint16_t)(s[14] | s[15] << 8);
 
+    o->ext_temp = s[31] & 0x01;
+    o->ext_temp_1x = s[31] & 0x02;
+    o->asr = s[31] & 0x04;
+    o->thermal_sensor = s[32] & 0x80;
+
     memcpy(o->part, &s[128], 18);
     o->part[18] = 0;
     for (int i = 17; i >= 0 && (o->part[i] == ' ' || o->part[i] == 0); i--)

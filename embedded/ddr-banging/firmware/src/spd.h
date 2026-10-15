@@ -26,6 +26,11 @@ typedef struct {
     uint32_t taa_min_ps;
     uint16_t cas_latencies;    // bit n = CL(n+4) supported
     char     part[19];         // bytes 128..145, trailing spaces trimmed
+    // byte 31, thermal and refresh options
+    bool     ext_temp;         // extended range (to 95 C) supported
+    bool     ext_temp_1x;      // ... at the normal refresh rate (else 2x needed)
+    bool     asr;              // auto self-refresh supported
+    bool     thermal_sensor;   // byte 32 bit 7: module carries a thermal sensor
 } spd_info_t;
 
 uint16_t spd_crc16(const uint8_t *p, unsigned n);

@@ -43,9 +43,18 @@ uint16_t ddr3_mr1(void)
     return 1u;         // DLL disable; RZQ/6 drive, RTT_NOM off, AL = 0, outputs on
 }
 
+static bool srt;
+
+void ddr3_set_srt(bool on)
+{
+    srt = on;
+}
+
 uint16_t ddr3_mr2(void)
 {
-    return 1u << 3;    // CWL = 6; RTT_WR off, normal self-refresh range
+    // CWL = 6; RTT_WR off. A7 = SRT: self-refresh good to 95 C (the DRAM
+    // refreshes itself twice as often), for chips with the extended range.
+    return 1u << 3 | (srt ? 1u << 7 : 0);
 }
 
 uint16_t ddr3_mr3(void)
@@ -75,6 +84,12 @@ void ddr3_seq_init(ddr3_seq_t *s, ddr3_cycle_t *buf, size_t cap, uint32_t tck_ns
     s->open_banks = 0;
     s->ref_hold = 0;
     s->last_read = 0;
+}
+
+void ddr3_seq_set_hot(ddr3_seq_t *s, bool hot)
+{
+    uint32_t trefi = hot ? TREFI_NS / 2 : TREFI_NS;
+    s->ref_interval = trefi / s->tck_ns ? trefi / s->tck_ns : 1;
 }
 
 uint32_t ddr3_ck(const ddr3_seq_t *s, uint32_t ns, uint32_t min_ck)

@@ -203,6 +203,7 @@ Run `spd`. Expect a 16×16 hex dump, then:
 DDR3: yes  CRC: ok (...)
 part 'M391B5673FH0-CH9', type ..., 2048 MB, 2 rank(s), x8 chips of 1024 Mb, 8 banks
 rows 14 bits, cols 10 bits, bus 64+ECC, 1.5 V, tCKmin 1500 ps, tAAmin 13500 ps, CL mask 003e
+extended temperature: ...; auto self-refresh: ...; thermal sensor: yes
 ```
 
 Then run `temp`. Expect `module 2x.xx C`, about room temperature. Put a warm
@@ -334,7 +335,8 @@ Start the logic-analyser capture, triggering on CKE rising. Then run `init`.
 Expect:
 
 ```
-initialised (DLL off, CL6, CWL6, BL8); MR0 .... MR1 .... MR2 .... MR3 ....; N cycles; now in self-refresh
+initialised (DLL off, CL6, CWL6, BL8); MR0 .... MR1 .... MR2 .... MR3 ....; now in self-refresh
+extended temperature range: yes (SRT on)
 ```
 
 In PulseView:
@@ -387,12 +389,14 @@ Take a photo.*
 
 ## Step 11 — soak (M9)
 
-- Run `t 0 100000`, then leave the board idle in self-refresh for an hour
-  without writing. Then read back the same range with a verify-only pass.
-  `t` currently writes and reads, so add a read-only mode if this step is
-  needed.
-- Note `temp` before and after. If the module ever reports ≥ 85 °C, tREFI
-  halves, and the firmware has to follow.
+- Run `t 0 100000`, then leave the board idle in self-refresh for an hour.
+  Then run `v 0 100000`, which reads the range back without writing it again.
+  Expect `100000 of 100000 bursts read back correctly`.
+- Note `temp` before and after. From 80 °C the firmware switches to 2× refresh
+  by itself and caps tCK at 1.7 µs, back below 78 °C. If the SPD doesn't
+  claim the extended range, it refuses to run hot instead.
+- For a warm test, a hairdryer at a distance works: watch `temp` climb past
+  80 °C, then repeat `t`/`v`. It should still pass, slower.
 
 ---
 
