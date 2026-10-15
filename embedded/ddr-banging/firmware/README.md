@@ -29,7 +29,7 @@ make flash   # picotool load (hold BOOTSEL while plugging in the first time)
 | `src/link.c` | ESP32 link, slave side: acts on complete frames of `../proto/ddrlink.h`. Pure logic. |
 | `src/link_spi.c` | The link's transport: SPI1 as a mode-3 slave, DMA both ways, CS interrupts, READY. |
 | `src/main.c` | The shell, and the link's memory backend. |
-| `test/` | Host tests (`make test`). |
+| `test/` | Host tests (`make test`). `test/jedec.c` is an independent JEDEC timing checker: every sequence the firmware builds, at every clock it allows, read back off the simulated pins. |
 
 A sequence is a list of CK cycles, each with a command/address word and data
 flags (drive, strobe, sample). The executor is deliberately dumb so a PIO
@@ -47,7 +47,7 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
 | `w <addr> <hex16>` | Write one 8-byte burst. |
 | `r <addr>` | Read one burst; prints the whole sample window with DQS levels. |
 | `t [addr] [n]` | Write then verify `n` bursts of a pattern. |
-| `tck [ns]` | Show or set the clock period (250 to 3900 ns; default 1000). |
+| `tck [ns]` | Show or set the clock period (250 to 3400 ns; default 1000). |
 | `hold <line>` / `hold off` | One line high, everything else low, for continuity checks. |
 | `walk [ms]` | Step `hold` through every line. |
 | `link` | ESP32 link statistics: command frames, errors, last error. |
@@ -68,11 +68,12 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
 - **DLL off**, CL = CWL = 6, BL8, ODT off. Read data arrives CL - 1 clocks
   after READ. The read window samples a cycle either side, so a wrong
   assumption shows up as data shifted in the window rather than garbage.
-- **Clock 1 MHz by default.** DLL-off needs tCK ≥ 8 ns, and Micron's 1 Gb
-  sheet caps it at 7.8 µs (3.9 µs above 85 °C). Above ~3.9 µs the REFs can't
-  keep pace and an open row exceeds tRAS(max), so the shell allows 250 ns to
-  3.9 µs. Near 250 ns the bit-bang loop is the limit; `tck` reports the
-  measured period.
+- **Clock 1 MHz by default.** DLL-off needs tCK ≥ 8 ns, and Samsung sets no
+  maximum beyond meeting refresh. The firmware's limit is refresh: no REF can
+  go in while a row is open, and a write holds its row until the next REF for
+  up to 18 clocks, while JEDEC allows only 8 REFs postponed. 18 × tCK ≤
+  8 × tREFI gives the shell's 3.4 µs cap; `test/jedec.c` checks it. Near
+  250 ns the bit-bang loop is the limit; `tck` reports the measured period.
 - **Refresh:** at 1 MHz a REF is due every 7 clocks. The sequence builder
   inserts them whenever every bank is closed, and pays back REFs postponed
   while a row was open (up to 8 may be postponed), paying them all off before

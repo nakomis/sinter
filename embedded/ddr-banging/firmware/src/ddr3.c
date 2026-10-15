@@ -153,6 +153,9 @@ void ddr3_seq_init_mrs(ddr3_seq_t *s)
 
 static void open_row(ddr3_seq_t *s, ddr3_addr_t x)
 {
+    // no REF can be issued while the row is open, and at tCK 3.4 us a burst
+    // keeps it open for ~7 tREFI: start with nothing owed (JEDEC: <= 8 postponed)
+    if (!s->open_banks) ddr3_seq_catch_up(s);
     ddr3_seq_cmd(s, DDR3_ACT, x.bank, x.row);
     nops(s, ddr3_ck(s, TRCD_NS, 1) - 1);
 }

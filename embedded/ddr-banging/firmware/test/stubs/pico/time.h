@@ -4,4 +4,6 @@
 // one simulated quarter clock = 250 ns at the default 1 MHz
 #include "../sim.h"
 static inline uint64_t time_us_64(void) { return (uint64_t)sim_t / 4; }
+// wall-clock waits (dram_init's RESET# timing): advance simulated time
+static inline void sleep_us(uint64_t us) { sim_t += (long)(us * 4); }
 #endif

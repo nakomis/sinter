@@ -6,6 +6,7 @@ void test_ddr3(void);
 void test_spd(void);
 void test_bus(void);
 void test_link(void);
+void test_jedec(void);
 
 int main(void)
 {
@@ -13,6 +14,7 @@ int main(void)
     test_spd();
     test_bus();
     test_link();
+    test_jedec();
     if (check_failures) {
         printf("%d check(s) failed\n", check_failures);
         return 1;

@@ -15,6 +15,8 @@
 #include "pins.h"
 #include "spd.h"
 
+#define TCK_MAX_NS 3400    // see cmd_tck
+
 // ---- helpers --------------------------------------------------------------
 
 static bool need_init(void)
@@ -181,17 +183,18 @@ static void cmd_tck(char *arg)
 {
     if (arg) {
         long ns = strtol(arg, NULL, 0);
-        // DLL-off: tCK >= 8 ns. Micron caps it at 7.8 us (3.9 us above 85 C);
-        // above ~3.9 us refreshes can't keep pace and rows exceed tRAS(max).
-        if (ns < 250 || ns > 3900) {
-            printf("tck must be 250..3900 ns\n");
+        // DLL-off: tCK >= 8 ns, and no maximum beyond refresh. But no REF can
+        // go in while a write's row is open (ACT to the next REF: 18 CK worst
+        // case), and JEDEC allows only 8 postponed: 18 x tCK <= 8 x tREFI.
+        if (ns < 250 || ns > TCK_MAX_NS) {
+            printf("tck must be 250..%d ns\n", TCK_MAX_NS);
             return;
         }
         // changing the clock is allowed while the DRAM is in self-refresh
         uint32_t got = bus_set_tck((uint32_t)ns);
         if (got > (uint32_t)ns + (uint32_t)ns / 10)
             printf("note: the bit-bang loop can't go that fast\n");
-        if (got > 3900) {
+        if (got > (uint32_t)TCK_MAX_NS) {
             printf("measured period %lu ns is too slow; back to 1000 ns\n", (unsigned long)got);
             bus_set_tck(1000);
         }
@@ -248,7 +251,7 @@ static void help(void)
            "w <addr> <hex16>    write one 8-byte burst\n"
            "r <addr>            read one burst, showing the raw sample window\n"
            "t [addr] [n]        write then verify n bursts of a pattern\n"
-           "tck [ns]            show or set the clock period (250..3900)\n"
+           "tck [ns]            show or set the clock period (250..3400)\n"
            "hold <line>|off     one line high, all others low (continuity)\n"
            "walk [ms]           step 'hold' through every line\n"
            "link                ESP32 link statistics\n");
