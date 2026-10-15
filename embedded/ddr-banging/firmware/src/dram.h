@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "bus_gpio.h"
+#include "bus.h"
 
 bool dram_initialised(void);
 void dram_forget(void);    // the bus was driven by hand (hold/walk): init again
@@ -46,5 +46,10 @@ void dram_set_thermometer(bool (*read16)(int *t16));
 // From the SPD, before dram_init: sets MR2 SRT.
 void dram_set_extended_temp(bool supported);
 bool dram_hot(void);
+
+// ---- Executor ---------------------------------------------------------------
+// bus_gpio_ops (default) or bus_pio_ops. Switch only between operations.
+void dram_set_bus(const bus_ops_t *ops);
+const bus_ops_t *dram_bus(void);
 
 #endif

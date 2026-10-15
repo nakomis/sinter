@@ -138,3 +138,11 @@ bool pioenc_timing(uint32_t tck_ns, uint32_t sysclk_hz, unsigned instr, unsigned
     // too slow even flat out: the fastest it can do is more than 10% over
     return found && (uint64_t)out->tck_ps <= (uint64_t)tck_ns * 1100;
 }
+
+void pioenc_executor_timing(uint32_t tck_ns, uint32_t sysclk_hz, pioenc_timing_t *out)
+{
+    uint64_t d = (uint64_t)tck_ns * sysclk_hz / (8ull * 1000000000ull);
+    out->div = d < 1 ? 1 : d > 65535 ? 65535 : (uint32_t)d;
+    out->delay = 0;
+    out->tck_ps = (uint32_t)(8ull * out->div * 1000000000000ull / sysclk_hz);
+}

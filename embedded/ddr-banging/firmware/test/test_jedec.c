@@ -274,6 +274,40 @@ static void test_dram_follows_the_temperature(void)
     sim_input = NULL;
 }
 
+// dram.c builds for, and runs on, whichever executor is selected
+static unsigned fake_runs;
+static uint32_t fake_tck_seen;
+static bool fake_ok;
+static bool fake_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max)
+{
+    (void)samples, (void)max;
+    fake_runs++;
+    fake_tck_seen = s->tck_ns;
+    return fake_ok;
+}
+static uint32_t fake_tck(void) { return 1234; }
+static uint32_t fake_set_tck(uint32_t ns) { (void)ns; return 1234; }
+static const bus_ops_t fake_bus = { "fake", fake_run, fake_tck, fake_set_tck };
+
+static void test_dram_uses_the_selected_bus(void)
+{
+    uint8_t b[16] = { 0 };
+    CHECK(dram_bus() == &bus_gpio_ops);   // the default
+    dram_set_bus(&fake_bus);
+    fake_ok = true;
+    CHECK(dram_init());
+    CHECK(dram_initialised());
+    fake_runs = 0;
+    CHECK(dram_write(0, b, 16));
+    CHECK_EQ(fake_runs, 1);
+    CHECK_EQ(fake_tck_seen, 1234);        // sequences built for its clock
+    fake_ok = false;
+    CHECK(!dram_read(0, b, 16));          // its failure is the operation's
+    CHECK(dram_error() != NULL);
+    CHECK(!dram_initialised());           // and the DRAM must be initialised again
+    dram_set_bus(&bus_gpio_ops);
+}
+
 void test_jedec(void)
 {
     RUN(test_checker_catches_violations);
@@ -285,4 +319,5 @@ void test_jedec(void)
     RUN(test_dram_round_trip_through_the_model);
     RUN(test_hot_sequences_meet_jedec);
     RUN(test_dram_follows_the_temperature);
+    RUN(test_dram_uses_the_selected_bus);
 }

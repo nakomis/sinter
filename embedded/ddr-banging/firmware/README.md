@@ -25,6 +25,7 @@ make flash   # picotool load (hold BOOTSEL while plugging in the first time)
 |---|---|
 | `src/ddr3.c` | Command encoding, mode registers, address split, and the cycle-by-cycle sequence builder (init, read, write, self-refresh, auto-inserted REFs). Pure logic. |
 | `src/spd.c` | DDR3 SPD decode and CRC. Pure logic. |
+| `src/bus.h`, `src/bus_pio.c` | The executor interface, and the PIO executor: three SMs, three TX DMA channels and one RX, the same programs and configuration as `test/pio_sim.c`. |
 | `src/bus_gpio.c` | Plays a sequence out by bit-banging, CPU-timed in quarter clocks. Interrupts off while it runs. |
 | `src/pio_enc.c` | The PIO executor's word streams (`../EXECUTOR.md`): a sequence as one run-length-encoded stream per SM, and the PIO clock divider for a tCK. Pure logic. |
 | `src/dram.c` | Init and whole-burst reads and writes, shared by the shell and the link. Self-refresh between operations. |
@@ -53,10 +54,11 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
 | `r <addr>` | Read one burst; prints the whole sample window with DQS levels. |
 | `t [addr] [n]` | Write then verify `n` bursts of a pattern, and report KB/s. |
 | `v [addr] [n]` | Verify only: read back what an earlier `t` wrote (soak tests). |
-| `tck [ns]` | Show or set the clock period (250 to 3400 ns; default 1000). |
+| `tck [ns]` | Show or set the clock period (default 1000): 250 to 3400 ns bit-banged, 54 to 3400 ns on PIO (whole 53.3 ns steps, rounded down). |
 | `hold <line>` / `hold off` | One line high, everything else low, for continuity checks. |
 | `walk [ms]` | Step `hold` through every line. |
 | `link` | ESP32 link statistics: command frames, errors, last error. |
+| `bus [pio\|gpio]` | Show or switch the executor: the CPU bit-banger (default, for bring-up) or the PIO executor (`../EXECUTOR.md`). The pins change hands without a glitch, the DRAM staying in self-refresh. `hold`/`walk` need `bus gpio`. |
 
 ## Wiring notes (spike)
 

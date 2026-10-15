@@ -9,6 +9,7 @@
 #include "pico/stdlib.h"
 
 #include "bus_gpio.h"
+#include "bus_pio.h"
 #include "ddr3.h"
 #include "dram.h"
 #include "link_spi.h"
@@ -223,21 +224,24 @@ static void cmd_tck(char *arg)
 {
     if (arg) {
         long ns = strtol(arg, NULL, 0);
-        // DLL-off: tCK >= 8 ns, and no maximum beyond refresh (DDR3_TCK_MAX_NS)
-        if (ns < 250 || ns > (long)DDR3_TCK_MAX_NS) {
-            printf("tck must be 250..%u ns\n", DDR3_TCK_MAX_NS);
+        // DLL-off: tCK >= 8 ns, and no maximum beyond refresh (DDR3_TCK_MAX_NS).
+        // The executor sets the floor: ~250 ns bit-banged, 54 ns from PIO.
+        long min = dram_bus() == &bus_pio_ops ? 54 : 250;
+        if (ns < min || ns > (long)DDR3_TCK_MAX_NS) {
+            printf("tck must be %ld..%u ns with this bus\n", min, DDR3_TCK_MAX_NS);
             return;
         }
         // changing the clock is allowed while the DRAM is in self-refresh
-        uint32_t got = bus_set_tck((uint32_t)ns);
+        uint32_t got = dram_bus()->set_tck((uint32_t)ns);
         if (got > (uint32_t)ns + (uint32_t)ns / 10)
             printf("note: the bit-bang loop can't go that fast\n");
         if (got > DDR3_TCK_MAX_NS) {
             printf("measured period %lu ns is too slow; back to 1000 ns\n", (unsigned long)got);
-            bus_set_tck(1000);
+            dram_bus()->set_tck(1000);
         }
     }
-    printf("tCK %lu ns (%.2f MHz)\n", (unsigned long)bus_tck(), 1000.0 / bus_tck());
+    uint32_t now = dram_bus()->tck();
+    printf("tCK %lu ns (%.2f MHz), %s\n", (unsigned long)now, 1000.0 / now, dram_bus()->name);
 }
 
 static const struct { int gpio; const char *name; } lines[] = {
@@ -251,8 +255,16 @@ static const struct { int gpio; const char *name; } lines[] = {
 };
 #define N_LINES (sizeof lines / sizeof lines[0])
 
+static bool cpu_owns_pins(void)
+{
+    if (dram_bus() == &bus_gpio_ops) return true;
+    printf("PIO has the pins: 'bus gpio' first\n");
+    return false;
+}
+
 static void cmd_hold(char *arg)
 {
+    if (!cpu_owns_pins()) return;
     dram_forget();   // the DRAM sees garbage from here
     if (!arg || !strcmp(arg, "off")) {
         bus_hold(-1);
@@ -270,6 +282,7 @@ static void cmd_hold(char *arg)
 
 static void cmd_walk(char *arg)
 {
+    if (!cpu_owns_pins()) return;
     dram_forget();
     uint32_t ms = arg ? strtoul(arg, NULL, 0) : 2000;
     for (unsigned i = 0; i < N_LINES; i++) {
@@ -293,14 +306,15 @@ static void help(void)
            "tck [ns]            show or set the clock period (250..3400)\n"
            "hold <line>|off     one line high, all others low (continuity)\n"
            "walk [ms]           step 'hold' through every line\n"
-           "link                ESP32 link statistics\n");
+           "link                ESP32 link statistics\n"
+           "bus [pio|gpio]      show or switch the executor (PIO, or CPU bit-bang)\n");
 }
 
 // ---- ESP32 link -----------------------------------------------------------
 
 static bool be_init(void *c) { (void)c; prepare_init(); return dram_init(); }
 static bool be_ready(void *c) { (void)c; return dram_initialised(); }
-static uint32_t be_tck(void *c) { (void)c; return bus_tck(); }
+static uint32_t be_tck(void *c) { (void)c; return dram_bus()->tck(); }
 static bool be_write(void *c, uint32_t a, const uint8_t *d, uint32_t n) { (void)c; return dram_write(a, d, n); }
 static bool be_read(void *c, uint32_t a, uint8_t *d, uint32_t n) { (void)c; return dram_read(a, d, n); }
 
@@ -316,6 +330,29 @@ static const link_backend_t backend = {
 };
 static link_t link;
 static uint8_t link_reply[DDRLINK_FRAME_MAX];
+
+// Switch executors between operations (the DRAM is in self-refresh), keeping
+// the clock as close as the new one can get
+static void cmd_bus(char *arg)
+{
+    const bus_ops_t *now = dram_bus();
+    if (arg && !strcmp(arg, "pio") && now != &bus_pio_ops) {
+        uint32_t tck = now->tck();
+        bus_pio_take_pins();
+        dram_set_bus(&bus_pio_ops);
+        bus_pio_ops.set_tck(tck);
+    } else if (arg && !strcmp(arg, "gpio") && now != &bus_gpio_ops) {
+        uint32_t tck = now->tck();
+        bus_pio_give_pins();
+        dram_set_bus(&bus_gpio_ops);
+        bus_gpio_ops.set_tck(tck < 250 ? 250 : tck);
+    } else if (arg && strcmp(arg, "pio") && strcmp(arg, "gpio")) {
+        printf("usage: bus [pio|gpio]\n");
+        return;
+    }
+    printf("bus: %s, tCK %lu ns\n", dram_bus()->name, (unsigned long)dram_bus()->tck());
+    if (dram_bus() == &bus_pio_ops && bus_pio_error()) printf("last PIO error: %s\n", bus_pio_error());
+}
 
 static void cmd_link(void)
 {
@@ -340,6 +377,7 @@ static void dispatch(char *line)
     else if (!strcmp(cmd, "hold")) cmd_hold(a1);
     else if (!strcmp(cmd, "walk")) cmd_walk(a1);
     else if (!strcmp(cmd, "link")) cmd_link();
+    else if (!strcmp(cmd, "bus")) cmd_bus(a1);
     else help();
 }
 
@@ -352,6 +390,7 @@ int main(void)
     gpio_set_function(PIN_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(PIN_SDA);   // weak; the fixture should have proper pull-ups
     gpio_pull_up(PIN_SCL);
+    bus_pio_init();
     dram_set_thermometer(read_temp16);
     link_init(&link, &backend, link_reply);
     link_spi_init(&link);

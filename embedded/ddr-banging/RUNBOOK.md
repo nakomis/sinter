@@ -385,6 +385,26 @@ Then run `t 0 1000`. Expect `1000 of 1000 bursts read back correctly`.
 *Milestone 8. A desktop DDR3 DIMM, bit-banged from a microcontroller.
 Take a photo.*
 
+### 10b. The same on PIO
+
+Once `t` passes bit-banged:
+
+```
+> bus pio
+> t 0 1000
+> tck 500
+> t 0 10000
+```
+
+- **Expect** the same results as bit-banged, and a much higher write/read
+  KB/s.
+- **If `t` fails on PIO but passed bit-banged:** capture one `w`/`r` on the
+  logic analyser, with CK, DQS, DQ0 and DIR_DQ in each mode, and compare.
+  - A shift of whole quarters means the three SMs started out of step
+    (`../EXECUTOR.md` §7).
+  - `bus` prints the last PIO error, such as a timeout.
+- `bus gpio` hands the pins back to the bit-banger at any point.
+
 ---
 
 ## Step 11 — soak (M9)

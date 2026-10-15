@@ -23,8 +23,13 @@ Status (2026-10-15):
   - both pin traces pass the JEDEC checker.
 - **Mutations:** a broken CK phase, DQS not rising on a strobe cycle, and a
   sampler loop a cycle long are each caught.
-- **Next:** `bus_pio.c` on the firmware side (§7, step 5), then the bench
-  checks.
+- **Done, firmware side:** `firmware/src/bus_pio.c`, selected with the
+  shell's `bus pio`. It builds, but is untested until the board arrives.
+  `dram.c` uses an executor interface (`bus.h`); a host test checks it builds
+  for, runs on and reports the failures of whichever executor is selected.
+  The host tests and the firmware share one clock rule
+  (`pioenc_executor_timing`: round down to a whole divider).
+- **Next:** the bench checks (§7).
 
 ## 1. The spec: bus_run's pin trace
 
@@ -129,13 +134,19 @@ sampler  [1:0]   bit 0: beat 0 this cycle (q3); bit 1: beat 1 of the previous cy
 ## 7. Remaining steps
 
 1. ~~epio submodule~~, ~~adapter~~, ~~`.pio` programs~~, ~~tests~~: done.
-2. **Firmware:** `bus_pio.c` with the same `bus_run` signature: three SMs,
-   three TX DMA channels and one RX DMA channel, built with
-   `pico_generate_pio_header`. Select it by `tck` or at build time; then the
-   shell's tCK floor drops to 53 ns.
+2. ~~Firmware: `bus_pio.c`~~: done. Selected with `bus pio`; tCK floor 54 ns.
+   - Per run: encode, rewind the three SMs, start the DMAs, and wait until
+     each TX FIFO is full (the alignment needs it).
+   - Then enable all three in sync, and wait until every stream is spent,
+     every SM has stalled on its empty FIFO and every sample is in. Then stop.
+   - A timeout of twice the expected time is a fault.
 3. **On the bench:** a `HARDWARE-CHECKS` pass, comparing the logic-analyser
-   capture with the emulator trace for one write run and one read run. Check
-   that the start-up alignment (§2) holds on silicon.
+   capture with the emulator trace for one write run and one read run.
+   Check, on silicon:
+   - the start-up alignment (§2);
+   - that PIO0's PREV mask reaches PIO2 (the RP2350's wrap-round, which epio
+     models);
+   - that 16-bit DMA reads of the RX FIFO pop one entry each.
 
 ## 8. Open questions
 

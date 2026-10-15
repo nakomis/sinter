@@ -1,5 +1,7 @@
 #include "bus_gpio.h"
 
+#include "bus.h"
+
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 #include "hardware/sync.h"
@@ -168,3 +170,13 @@ void bus_hold(int gpio)
         gpio_put_masked64(outputs, bit);
     }
 }
+
+// ---- as a bus executor (bus.h) ----------------------------------------------
+
+static bool gpio_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_samples)
+{
+    bus_run(s, samples, max_samples);
+    return true;
+}
+
+const bus_ops_t bus_gpio_ops = { "gpio (CPU bit-bang)", gpio_run, bus_tck, bus_set_tck };

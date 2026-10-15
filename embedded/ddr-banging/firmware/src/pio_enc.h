@@ -73,4 +73,10 @@ typedef struct {
 bool pioenc_timing(uint32_t tck_ns, uint32_t sysclk_hz, unsigned instr, unsigned max_delay,
                    pioenc_timing_t *out);
 
+// The executor's own rule (8 SM cycles per CK): the largest integer divider
+// whose tCK is at most tck_ns (never slower than asked: the refresh cap is a
+// maximum), at least 1. Fills div and tck_ps (delay 0). Shared by bus_pio.c
+// and the host tests so both run the same clock.
+void pioenc_executor_timing(uint32_t tck_ns, uint32_t sysclk_hz, pioenc_timing_t *out);
+
 #endif
