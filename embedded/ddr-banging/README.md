@@ -6,6 +6,7 @@ gigabytes of RAM. Plane epic: **SINT-100**.
 | Path | What |
 |---|---|
 | `RUNBOOK.md` | Bring-up, step by step: parcel to first burst, with what "good" looks like at each step |
+| `EXECUTOR.md` | Design note for the PIO executor (milestone 11): SM layout, word streams, timing, draft programs |
 | `firmware/` | RP2350B bring-up firmware: shell, DLL-off DDR3 sequences, ESP32 link (slave) |
 | `proto/` | `ddrlink`: the ESP32 ↔ RP2350B SPI protocol, shared by both sides |
 | `esp32-client/` | ESP-IDF component `ddrbang` (the ESP32's API to the DIMM) and the 128 MB write/verify test |

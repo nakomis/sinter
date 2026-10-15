@@ -7,6 +7,7 @@ void test_spd(void);
 void test_bus(void);
 void test_link(void);
 void test_jedec(void);
+void test_pio_enc(void);
 
 int main(void)
 {
@@ -15,6 +16,7 @@ int main(void)
     test_bus();
     test_link();
     test_jedec();
+    test_pio_enc();
     if (check_failures) {
         printf("%d check(s) failed\n", check_failures);
         return 1;

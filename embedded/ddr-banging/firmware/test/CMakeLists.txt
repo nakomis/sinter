@@ -12,6 +12,7 @@ add_executable(run_tests
     test_bus.c
     test_link.c
     test_jedec.c
+    test_pio_enc.c
     jedec.c
     dram_model.c
     stubs/sim.c
@@ -20,6 +21,7 @@ add_executable(run_tests
     ../src/bus_gpio.c
     ../src/link.c
     ../src/dram.c
+    ../src/pio_enc.c
     ../../proto/ddrlink.c
     ../../esp32-client/components/ddrbang/ddrbang.c
 )
