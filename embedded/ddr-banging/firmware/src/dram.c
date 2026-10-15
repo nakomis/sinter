@@ -6,9 +6,9 @@
 
 #define SEQ_CAP 8192
 // Bursts per sequence in dram_read/dram_write: one self-refresh exit (~520
-// CK) is shared by all of them, at ~18 CK each plus REFs. 256 fit SEQ_CAP
-// up to tck 2 us; slower clocks owe more REFs per burst, so a sequence that
-// overflows is rebuilt with half as many.
+// CK) is shared by all of them, in runs of up to ddr3_seq_row_bursts() per
+// open row (~4 CK each, plus ~18 per run, plus REFs). A sequence that
+// overflows SEQ_CAP is rebuilt with half as many.
 #define RUN_BURSTS 256
 static ddr3_cycle_t seq_buf[SEQ_CAP];
 static bus_sample_t samples[RUN_BURSTS * DDR3_READ_WINDOW_CYCLES];
@@ -67,39 +67,51 @@ bool dram_write_burst(uint32_t addr, const uint8_t d[8])
     return dram_write(addr, d, 8);
 }
 
-// Read j's data, from its sample window (each read samples
-// DDR3_READ_WINDOW_CYCLES cycles, in order).
-static void unpack_read(unsigned j, uint8_t out[8])
-{
-    const bus_sample_t *w = samples + j * DDR3_READ_WINDOW_CYCLES;
-    for (int k = 0; k < 8; k++) {
-        unsigned beat = 2 * DDR3_READ_WINDOW_BEFORE + k;
-        out[k] = w[beat / 2].beat[beat % 2] & 0xFF;
-    }
-}
-
 bool dram_read_burst(uint32_t addr, uint8_t out[8])
 {
     return dram_read(addr, out, 8);
 }
 
-// One sequence: self-refresh exit, n bursts (each opening and closing its
-// own row, then paying the REFs it owes), self-refresh entry. Halves n until
-// the sequence fits. Milestone 11: several bursts per open row, within tRAS max.
+// One sequence: self-refresh exit, then runs of bursts (one ACT and PRE per
+// run, up to ddr3_seq_row_bursts() per row), then self-refresh entry. Halves
+// *n until the sequence fits. Read runs' windows are recorded so the bytes
+// can be picked out afterwards.
+static struct { uint32_t first_sample; unsigned bursts; } runs[RUN_BURSTS];
+static unsigned n_runs;
+
 static bool batch(ddr3_seq_t *s, uint32_t addr, const uint8_t *wr, uint32_t *n)
 {
     for (;;) {
         seq_start(s);
         ddr3_seq_srx(s);
-        for (uint32_t j = 0; j < *n; j++) {
-            if (wr) ddr3_seq_write(s, addr + 8 * j, wr + 8 * j);
-            else ddr3_seq_read(s, addr + 8 * j);
-            ddr3_seq_catch_up(s);
+        unsigned per_row = ddr3_seq_row_bursts(s);
+        uint32_t sampled = 0;
+        n_runs = 0;
+        for (uint32_t j = 0; j < *n && !s->overflow;) {
+            unsigned want = *n - j < per_row ? *n - j : per_row;
+            unsigned got = wr ? ddr3_seq_write_run(s, addr + 8 * j, wr + 8 * j, want)
+                              : ddr3_seq_read_run(s, addr + 8 * j, want);
+            if (!wr) {
+                runs[n_runs].first_sample = sampled;
+                runs[n_runs++].bursts = got;
+                sampled += ddr3_read_run_samples(got);
+            }
+            j += got;
         }
         ddr3_seq_sre(s);
         if (!s->overflow || *n == 1) return run(s);
         *n /= 2;
     }
+}
+
+// Burst k of a read run starts DDR3_READ_WINDOW_BEFORE + 4k cycles into its window.
+static void unpack_reads(uint8_t *out)
+{
+    for (unsigned r = 0; r < n_runs; r++)
+        for (unsigned k = 0; k < runs[r].bursts; k++, out += 8) {
+            const bus_sample_t *w = samples + runs[r].first_sample + DDR3_READ_WINDOW_BEFORE + 4 * k;
+            for (int b = 0; b < 8; b++) out[b] = w[b / 2].beat[b % 2] & 0xFF;
+        }
 }
 
 bool dram_write(uint32_t addr, const uint8_t *d, uint32_t len)
@@ -119,7 +131,7 @@ bool dram_read(uint32_t addr, uint8_t *d, uint32_t len)
         uint32_t n = (len - done) / 8 < RUN_BURSTS ? (len - done) / 8 : RUN_BURSTS;
         ddr3_seq_t s;
         if (!batch(&s, addr + done, NULL, &n)) return false;
-        for (uint32_t j = 0; j < n; j++) unpack_read(j, d + done + 8 * j);
+        unpack_reads(d + done);
         done += 8 * n;
     }
     return true;

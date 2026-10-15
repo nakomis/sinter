@@ -13,6 +13,7 @@ add_executable(run_tests
     test_link.c
     test_jedec.c
     jedec.c
+    dram_model.c
     stubs/sim.c
     ../src/ddr3.c
     ../src/spd.c

@@ -122,6 +122,21 @@ void ddr3_seq_read(ddr3_seq_t *s, uint32_t byte_addr);
 #define DDR3_READ_WINDOW_BEFORE 1   // cycles sampled before RL
 #define DDR3_READ_WINDOW_CYCLES 7   // cycles sampled in all
 
+// Runs: n bursts at consecutive addresses in one row (one ACT, a WR/RD every
+// tCCD = 4 CK with seamless data, one PRE). A run stops at the end of its
+// row (1 KB), and should not exceed ddr3_seq_row_bursts(). Returns the
+// bursts actually laid down. A read run samples
+// one window of ddr3_read_run_samples(n) cycles; burst j's data starts at
+// sampled cycle DDR3_READ_WINDOW_BEFORE + 4j.
+unsigned ddr3_seq_write_run(ddr3_seq_t *s, uint32_t byte_addr, const uint8_t *data, unsigned n);
+unsigned ddr3_seq_read_run(ddr3_seq_t *s, uint32_t byte_addr, unsigned n);
+unsigned ddr3_read_run_samples(unsigned n);
+
+// The longest run this clock allows: no REF can be issued while the row is
+// open, and JEDEC allows only 8 postponed, so ACT to the next REF must fit
+// in 8 tREFI. At least 1.
+unsigned ddr3_seq_row_bursts(const ddr3_seq_t *s);
+
 // With every bank closed, issue every REF owed (then wait out the last
 // tRFC). Between back-to-back bursts there is no idle gap for
 // ddr3_seq_idle() to slot REFs into, so callers batching bursts use this.
