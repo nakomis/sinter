@@ -3,18 +3,28 @@
 The bring-up firmware plays each `ddr3_seq_t` out by **CPU bit-banging**
 (`firmware/src/bus_gpio.c`), which tops out at tCK ≈ 250 ns (4 MHz) and
 holds interrupts off while it runs. The PIO executor plays the **same
-sequences** from two PIO state machines fed by DMA. The sequence builder,
+sequences** from three PIO state machines fed by DMA. The sequence builder,
 `dram.c`, the ESP32 link and every host test above the bus stay as they are.
 
 Status (2026-10-15):
-- **Done:** the word streams and timing maths (`firmware/src/pio_enc.c`).
-- **Done:** the **command SM**, `firmware/src/pio/ddr3_cmd.pio`, runs under
-  epio (nakomis/epio `v0.2.2-nakomis.2`, a submodule). For init and run
-  batches at 250 ns, 1 µs and 3.4 µs, the DRAM sees exactly the sequence's
-  C/A on every CK rising edge. There is one edge per cycle, evenly spaced,
-  and the duty cycle is exactly 50%. The pin trace passes the JEDEC checker,
-  which now also checks tCH/tCL. A deliberately broken CK phase is caught.
-- **Next:** the data SM (§5), then `bus_pio.c` on the firmware side.
+- **Done, under epio** (nakomis/epio `v0.2.2-nakomis.2`, a submodule):
+  - all three SMs: `firmware/src/pio/ddr3_cmd.pio`, `ddr3_wr.pio` and
+    `ddr3_smp.pio`;
+  - their word streams (`firmware/src/pio_enc.c`);
+  - the adapter (`firmware/test/pio_sim.c`).
+- **Command SM** (`test/test_pio_cmd.c`): the DRAM sees exactly the
+  sequence's C/A on every CK rising edge. There's one edge per cycle, evenly
+  spaced, at a 50% duty cycle.
+- **All three together** (`test/test_pio_data.c`), at 250 ns, 1 µs and
+  3.4 µs:
+  - 1 KB written across a row and bank boundary lands in the DRAM model
+    byte for byte;
+  - read back, it returns byte for byte, with DQS high on every first beat;
+  - both pin traces pass the JEDEC checker.
+- **Mutations:** a broken CK phase, DQS not rising on a strobe cycle, and a
+  sampler loop a cycle long are each caught.
+- **Next:** `bus_pio.c` on the firmware side (§7, step 5), then the bench
+  checks.
 
 ## 1. The spec: bus_run's pin trace
 
@@ -32,114 +42,78 @@ to reproduce it.** Scaling time is allowed; any other difference fails a test.
 
 ## 2. Layout
 
-| SM | Block | GPIOBASE | OUT | Side-set | IN | Fed by |
-|---|---|---|---|---|---|---|
-| **cmd** | PIO0 | 16 | 18–40 (23 pins: CKE … A13) | 16–17 (CK, CK#) | — | DMA ← command stream |
-| **data** | PIO1 | 0 | 0–7 (DQ), pindirs 0–9 | 8–11 (DQS, DQS#, DIR_DQ, DIR_DQS) | 0–9 → RX FIFO | DMA ← data stream; DMA → samples |
+Three SMs, one per PIO block. **Instruction memory decided it:** a data SM
+that both drives and samples needs about 40 instructions, and a block holds
+32.
 
-- GPIO 12–15 (RESET#, lane select) and 41–47 stay on SIO and the SPI1 link,
-  as now. PIO2 is free; it could later host a PIO SPI/QSPI slave for the
-  ESP32 link.
-- **Why two blocks:** a PIO block maps OUT/side-set within a 32-pin window
-  (GPIOBASE 0 or 16). C/A needs 16–40 and data needs 0–11, so no single
-  window covers both.
-- **Sync:** both SMs start on the same system clock, using CTRL's
-  NEXTPREV_SM_ENABLE and NEXTPREV_CLKDIV_RESTART. They stay in step because
-  every path through each program takes **the same number of SM cycles per
-  CK**, with the same divider and delay. A cross-block `irq next` / `wait irq
-  prev` handshake at sequence start (and optionally every N words) guards
-  against drift. epio models all of this exactly.
+| SM | Block | GPIOBASE | Pins | Program | Stream |
+|---|---|---|---|---|---|
+| **cmd** | PIO0 | 16 | OUT 18–40 (C/A), side-set 16–17 (CK, CK#) | `ddr3_cmd.pio`, 7 instr | C/A + 9-bit repeat |
+| **writer** | PIO1 | 0 | OUT 0–9 (DQ data; pindirs DQ + DQS), side-set (opt) 8–11 (DQS, DQS#, DIR_DQ, DIR_DQS) | `ddr3_wr.pio`, 28 instr | idle + 16-bit repeat, or drive/strobe + dq[0], dq[1] |
+| **sampler** | PIO2 | 0 | IN 0–9 → RX (autopush 10) | `ddr3_smp.pio`, 24 instr | beat-0 / beat-1 flags + 16-bit repeat |
 
-## 3. Word streams (done: `pio_enc.c`)
+- GPIO 12–15 (RESET#, lane select) and 41–47 stay on SIO and the SPI1 link.
+- **Why separate blocks:** PIO maps OUT/side-set within a 32-pin window
+  (GPIOBASE 0 or 16), so C/A (16–40) and data (0–11) can't share a block.
+  The writer and sampler don't fit one block's memory together either.
+- **Sync in time, not by word:**
+  - Every path through every program takes exactly **8 SM cycles per CK**
+    (2 per quarter), and all three use the same integer divider.
+  - One write to PIO0's CTRL enables SM0 of PIO0, PIO1 (NEXT) and PIO2
+    (PREV, wrapping) on the same cycle and restarts their dividers.
+  - Each stream is therefore run-length encoded independently.
+- **Start-up alignment:** the writer and sampler start on an `out pc, 2`
+  dispatch (`public start` in each `.pio`). The cmd SM starts on a one-off
+  `nop` just before its wrap target. Both then reach CK 0's q0 on the same
+  cycle: the first OUT after an empty OSR stalls one cycle in both.
 
-One word per run of identical CK cycles, in **both** streams at once, so word
-k of each describes the same cycles. LSB first (OSR shifts right).
+## 3. Word streams (`pio_enc.c`)
 
-```
-command  [22:0]  C/A for GPIO 18..40          [31:23] repeats (0..511)
-data     [2:0]   DRIVE, STROBE, SAMPLE
-         [3]     PREV_SAMPLE (beat 1 of the previous cycle is due in q1)
-         [11:4]  dq[0]   [19:12] dq[1]   [22:20] 0   [31:23] repeats
-```
-
-- `pioenc_decode` inverts it exactly. `test/test_pio_enc.c` round-trips init,
-  write-run and read-run batches at 250 ns, 1 µs and 3.4 µs, and runs the
-  JEDEC checker on the decoded form.
-- **Compression:** init sequences shrink about 33× (512 CK of tZQinit become
-  one word). Run batches shrink 2.5–2.9×, because write data changes every
-  cycle.
-- **DMA rate:** at tCK 250 ns that's roughly 1.4 M words/s per stream, which
-  DMA handles easily.
-- **Sizing:** a 2 KB batch is 580–1,800 words per stream at 4 bytes each, so
-  two 7 KB buffers, or one per stream in a ring.
-
-## 4. Timing (done: `pioenc_timing`)
-
-Each quarter is `instr` instructions × (1 + delay) SM cycles × div system
-clocks, with an **integer** divider. Integer dividers avoid the fractional
-divider's jitter, and epio's MVP models integer only.
-
-- At 150 MHz, tCK = 4 × instr × (1 + delay) × div / 150 MHz.
-- **Exact** at 2 µs, and at every tCK that's a multiple of 26.7 ns × instr.
-  1 µs comes out at 986.7 or 1013.3 ns, which is fine: the shell reports the
-  real tCK, and the refresh maths uses whatever tCK it's given.
-- **Delay bits:** the data SM's 4 side-set pins leave **1 delay bit** (0–1),
-  and the cmd SM's 2 leave 3 (0–7). Both SMs must use identical timing, so use
-  `max_delay = 1` for both and let the divider do the work.
-- **The fastest clock** is set by the longest quarter: whichever SM needs the
-  most instructions in one quarter. With 2 instructions per quarter at div 1,
-  that's 8 SM cycles per CK = 53 ns (18.75 MHz). With 1 instruction it's
-  26.7 ns. The DLL-off floor is 8 ns, so PIO is never the limit DDR3 imposes.
-  The real limits are the translators and the wiring.
-
-## 5. Draft programs (to be written against epio)
-
-**cmd** (1 instruction per quarter; side-set bit 0 = CK on GPIO 16, bit 1 =
-CK# on 17). This is the version in `src/pio/ddr3_cmd.pio`, tested:
+Words are consumed LSB first (OSR shifts right):
 
 ```
-.program ddr_cmd
-.side_set 2
-.wrap_target
-top:
-    out pins, 23    side 0b10        ; q0: CK low, CK# high; C/A out (autopull at 32)
-    out x, 9        side 0b10        ; q1: repeats
-loop:
-    nop             side 0b01        ; q2: CK rises: the DRAM registers C/A
-    jmp x-- rep     side 0b01        ; q3: repeats left? (tests, then decrements)
-.wrap                                ;     none: wrap to top for the next word
-rep:
-    nop             side 0b10        ; q0: same C/A, still on the pins
-    jmp loop        side 0b10        ; q1
+cmd      [22:0]  C/A for GPIO 18..40           [31:23] repeats (0..511)      autopull 32
+writer   [1:0]   kind: 0 idle, 1 drive (DQS low), 2 drive + strobe            autopull 18
+         idle:   [17:2] repeats (0..65535)
+         drive:  [9:2] dq[0]   [17:10] dq[1]   (never repeated)
+sampler  [1:0]   bit 0: beat 0 this cycle (q3); bit 1: beat 1 of the previous cycle (q1)
+         [17:2]  repeats (0..65535)                                           autopull 18
 ```
 
-Six instructions. Every CK is exactly 4 instructions on both paths
-(top → loop, and rep → loop). If the FIFO is empty, `out pins` stalls in q0
-with CK held low. That's a legal clock stretch for DDR3 only in
-self-refresh, which is why every sequence ends with SRE before the stream
-runs out.
+- The writer's and sampler's kind *is* the dispatch address: `out pc, 2`
+  into a jump table at offset 0, so both load with `.origin 0`.
+- `pioenc_decode` inverts all three and rejects streams that disagree on
+  length, a kind 3 writer word, or a beat-1 sample that doesn't follow a
+  sampled cycle.
 
-**data** (dispatch per word on its flags; 2 instructions per quarter is
-probably needed):
+## 4. Timing (`pioenc_timing`, `pio_sim_timing`)
 
-- `out pc, 4` on the flags would dispatch straight to one of up to 16
-  handlers, but there are only 32 words of instruction memory per block, so
-  the handlers must be tiny.
-- **Kinds that occur:**
-  - idle;
-  - sample;
-  - prev-sample only;
-  - sample + prev-sample;
-  - drive (preamble/postamble);
-  - drive + strobe.
-- That's six kinds × 4 quarters. Each handler also needs its own repeat loop.
+- tCK = 8 × div / 150 MHz, with an integer divider: **53.3 ns × div**. So
+  1 µs runs at 1013.3 ns (div 19), 250 ns at 266.7 ns (div 5) and 3.4 µs at
+  3413.3 ns (div 64).
+- Sequences are built for the tCK actually run, as `bus_set_tck` does now.
+- The fastest clock is div 1, 53 ns (18.75 MHz). DLL-off DDR3 allows 8 ns,
+  so the translators and wiring will be the limit, not PIO.
+- The writer's optional 4-bit side-set leaves no delay bits, so its waits are
+  `nop`s. That's why it is 28 instructions.
 
-**Alternative:** split data into two SMs in PIO1. A **writer** (DRIVE,
-STROBE, DQ) and a **sampler** (SAMPLE only, `in pins, 10` at q1/q3) would
-each be small. The sampler could even take its own simpler stream, of
-"sample for n cycles starting at cycle k" records.
+## 5. Programs
 
-Decide with the emulator. Instruction memory, not speed, is the constraint.
+`firmware/src/pio/*.pio`, commented cycle by cycle (c0..c7 of each CK).
+
+- **cmd:** `out pins, 23` / `out x, 9` / `nop` / `jmp x-- rep`, each `[1]`,
+  with side-set making CK. A repeat replays the cycle without touching the
+  pins.
+- **writer:** dispatch to idle, drive or strobe.
+  - Drive paths: DIR on (side-set) at c0, then `mov pindirs, ~null` at c1,
+    so the translator turns round before the RP2350 drives. dq[0] goes out
+    at c2 (q1), DQS rises at c4 (q2) on strobe cycles, dq[1] goes out at c6
+    (q3), and the next dispatch is at c7.
+  - Idle: `mov pindirs, null` first, then DIR off (opt side-set leaves DIR
+    alone until then), then a repeat loop.
+- **sampler:** dispatch to none, beat 0, beat 1 or both. `in pins, 10` runs
+  at c2 (q1, the previous cycle's beat 1) and c6 (q3, beat 0), with delay
+  slots for the waits and repeat loops for long windows.
 
 ## 6. Underrun and errors
 
@@ -148,38 +122,26 @@ Decide with the emulator. Instruction memory, not speed, is the constraint.
   checker should flag it. In practice, DMA from SRAM at about 1.4 M words/s
   won't underrun, but test it: starve the FIFO in the emulator and confirm the
   checker notices.
-- Read samples arrive in the RX FIFO, 2 words per sampled cycle (beat 0 and
-  beat 1, 10 bits each: DQ, DQS, DQS#). The data layout in `dram.c` stays as it
+- Read samples arrive in PIO2's RX FIFO, 2 words per sampled cycle (beat 0
+  and beat 1, 10 bits each: DQ, DQS, DQS#), in bus_run's order. The data layout in `dram.c` stays as it
   is: `bus_sample_t[]`, filled by DMA instead of by the CPU.
 
-## 7. Plan once epio is tagged
+## 7. Remaining steps
 
-1. Add epio as a git submodule at `firmware/test/third_party/epio`, pinned to
-   the tag.
-2. **Adapter** (`test/pio_sim.c`): epio's per-tick hook → `sim_out`/`sim_oe` +
-   `sim_record()`; `sim_input` → epio GPIO input levels. Ticks → sim time
-   (one sim unit is a quarter clock today, so scale).
-3. **`.pio` programs** in `firmware/src/`, assembled by pioasm at build time
-   (`pico_generate_pio_header` on the firmware side; host tests load the same
-   `-o c-sdk` header into epio).
-4. **Tests:** for each batch shape and tCK, compare the PIO-played pin trace
-   with bus_run's (time-scaled), check it with `jedec_check_pins`, and run
-   the DRAM model round trip.
-5. **Firmware:** `bus_pio.c` with the same `bus_run` signature, selected at
-   build time or by `tck` (PIO below 250 ns, bit-bang above, or PIO always).
-   Then the shell's tCK floor drops.
-6. **On the bench:** a `HARDWARE-CHECKS` pass. Compare the logic-analyser
-   capture with the emulator trace for one write run and one read run.
+1. ~~epio submodule~~, ~~adapter~~, ~~`.pio` programs~~, ~~tests~~: done.
+2. **Firmware:** `bus_pio.c` with the same `bus_run` signature: three SMs,
+   three TX DMA channels and one RX DMA channel, built with
+   `pico_generate_pio_header`. Select it by `tck` or at build time; then the
+   shell's tCK floor drops to 53 ns.
+3. **On the bench:** a `HARDWARE-CHECKS` pass, comparing the logic-analyser
+   capture with the emulator trace for one write run and one read run. Check
+   that the start-up alignment (§2) holds on silicon.
 
 ## 8. Open questions
 
-- One data SM or two? (§5)
-- Is IN read-back of driven pins exact in epio? The pio-emulator session is
-  testing this rather than assuming.
-- Should the sampler use the 2-cycle input synchroniser, or bypass it on
-  DQ/DQS? Bypassing makes sampling exactly the q1/q3 instant. With the
-  synchroniser, samples are two SM cycles stale, which is fine at low
-  speeds but must be accounted for at speed.
-- tDQSCK in DLL-off (1–10 ns) is irrelevant at bit-bang speeds. At ≥ 20 MHz
-  it's a sizeable fraction of a quarter: worth sampling on DQS edges then
-  (`wait pin`), not on fixed quarters.
+- **Input synchroniser:** the sampler currently reads through it (two system
+  clocks stale), which is fine at div ≥ 5. Bypass DQ/DQS
+  (INPUT_SYNC_BYPASS) at high speed?
+- **tDQSCK in DLL-off** (1–10 ns): irrelevant at these clocks. Near 50 ns
+  tCK it becomes a sizeable fraction of a quarter; sample on DQS edges
+  (`wait pin`) then, not on fixed quarters.

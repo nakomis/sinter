@@ -14,6 +14,7 @@ add_executable(run_tests
     test_jedec.c
     test_pio_enc.c
     test_pio_cmd.c
+    test_pio_data.c
     pio_sim.c
     jedec.c
     dram_model.c
@@ -45,8 +46,11 @@ target_link_libraries(run_tests PRIVATE epio)
 
 # pioasm, built from the pico-sdk on the host, assembles the .pio files into
 # the same headers the firmware build makes
-if(NOT DEFINED PICO_SDK_PATH)
-    set(PICO_SDK_PATH $ENV{PICO_SDK_PATH})
+if(NOT PICO_SDK_PATH)
+    set(PICO_SDK_PATH "$ENV{PICO_SDK_PATH}" CACHE PATH "pico-sdk, for pioasm")
+endif()
+if(NOT EXISTS "${PICO_SDK_PATH}/tools/pioasm/CMakeLists.txt")
+    message(FATAL_ERROR "PICO_SDK_PATH ('${PICO_SDK_PATH}') isn't a pico-sdk: set it, or run 'make test'")
 endif()
 include(ExternalProject)
 ExternalProject_Add(pioasm_host
@@ -58,7 +62,7 @@ ExternalProject_Add(pioasm_host
 set(PIOASM ${CMAKE_BINARY_DIR}/pioasm/pioasm)
 set(PIO_GEN ${CMAKE_BINARY_DIR}/pio)
 file(MAKE_DIRECTORY ${PIO_GEN})
-foreach(prog ddr3_cmd)
+foreach(prog ddr3_cmd ddr3_wr ddr3_smp)
     add_custom_command(OUTPUT ${PIO_GEN}/${prog}.pio.h
         COMMAND ${PIOASM} -o c-sdk ${CMAKE_CURRENT_SOURCE_DIR}/../src/pio/${prog}.pio ${PIO_GEN}/${prog}.pio.h
         DEPENDS pioasm_host ${CMAKE_CURRENT_SOURCE_DIR}/../src/pio/${prog}.pio)

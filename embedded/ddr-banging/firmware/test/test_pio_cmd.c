@@ -14,7 +14,7 @@
 #include "sim.h"
 
 static ddr3_cycle_t cyc[8192];
-static uint32_t cmd[8192], data[8192];
+static uint32_t cmd[8192];
 
 #define CA_NO_CK (CA_MASK)   // everything but CK/CK#
 
@@ -47,15 +47,16 @@ static size_t check_edges(const ddr3_seq_t *s, uint32_t sysclk_per_ck, int *mism
 static void play(ddr3_seq_t *s, uint32_t tck, bool from_sr)
 {
     bool ovf;
-    size_t w = pioenc_encode(s->cycles, s->len, cmd, data, 8192, &ovf);
+    size_t w = pioenc_cmd(s->cycles, s->len, cmd, 8192, &ovf);
     CHECK(!ovf);
     pio_sim_result_t r;
     pioenc_timing_t t;
-    CHECK(pioenc_timing(tck, PIO_SIM_SYSCLK_HZ, 1, 0, &t));
-    uint32_t per_ck = 4 * t.div;
+    CHECK(pio_sim_timing(tck, &t));
+    uint32_t per_ck = PIO_SIM_SM_CYCLES_PER_CK * t.div;
     // the whole sequence, plus a few cycles' grace to show it stops cleanly
-    CHECK(pio_sim_run_cmd(cmd, w, tck, (s->len + 4) * per_ck + 64, &r));
-    CHECK_EQ(r.cmd_words_used, w);
+    pio_sim_streams_t st = { .cmd = cmd, .n_cmd = w };
+    CHECK(pio_sim_run(&st, tck, (s->len + 4) * per_ck + 64, &r));
+    CHECK_EQ(r.cmd_used, w);
     int mism, gaps;
     size_t edges = check_edges(s, per_ck, &mism, &gaps);
     CHECK_EQ(edges, s->len);    // no edge lost, none extra: CK stops when the stream does
@@ -70,7 +71,7 @@ static void play(ddr3_seq_t *s, uint32_t tck, bool from_sr)
 static uint32_t real_tck(uint32_t want)
 {
     pioenc_timing_t t;
-    CHECK(pioenc_timing(want, PIO_SIM_SYSCLK_HZ, 1, 0, &t));
+    CHECK(pio_sim_timing(want, &t));
     return (t.tck_ps + 999) / 1000;
 }
 

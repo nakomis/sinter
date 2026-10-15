@@ -17,7 +17,7 @@
 #include "sim.h"
 
 #define MODEL_BYTES (1u << 20)   // rows 0..127 of every bank
-#define Q 4                      // sim ticks per CK
+static long Q = 4;               // sim ticks per CK: 4 under bus_run
 
 static uint8_t mem[MODEL_BYTES];
 static size_t seen;              // sim_log entries processed
@@ -30,8 +30,21 @@ typedef struct { long start; uint32_t addr; } xfer_t;   // start: tick of beat 0
 static xfer_t reads[PENDING], writes[PENDING];
 static unsigned n_reads, n_writes;
 
+void model_set_ticks_per_ck(long ticks)
+{
+    Q = ticks;
+}
+
+void model_rewind(void)
+{
+    seen = 0;
+    prev_out = 0;
+    n_reads = n_writes = 0;
+}
+
 void model_reset(void)
 {
+    Q = 4;
     memset(mem, 0, sizeof mem);
     seen = 0;
     prev_out = 0;
@@ -67,8 +80,8 @@ static void command(long t, uint32_t ca)
 static void strobe_edge(long t, uint8_t dq)
 {
     for (unsigned i = 0; i < n_writes; i++) {
-        long k = (t - writes[i].start + 1) / 2;   // edges at start + 2k
-        if (t >= writes[i].start - 1 && k < 8) {
+        long half = Q / 2, k = (t - writes[i].start + half / 2) / half;   // edges at start + k * half
+        if (t >= writes[i].start - half / 2 && k < 8) {
             uint32_t a = writes[i].addr + (uint32_t)k;
             if (a < MODEL_BYTES) mem[a] = dq;
             else out_of_range = true;
@@ -107,8 +120,8 @@ uint64_t model_input(long t)
     catch_up();
     for (unsigned i = 0; i < n_reads; i++) {
         long d = t - reads[i].start;
-        if (d >= 0 && d < 16) {
-            unsigned k = (unsigned)d / 2;
+        if (d >= 0 && d < 4 * Q) {
+            unsigned k = (unsigned)(d / (Q / 2));
             uint32_t a = reads[i].addr + k;
             uint64_t v = a < MODEL_BYTES ? mem[a] : 0;
             return v | (k % 2 ? 1ull << PIN_DQSN : 1ull << PIN_DQS);

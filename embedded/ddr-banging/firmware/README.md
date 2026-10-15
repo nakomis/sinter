@@ -26,12 +26,12 @@ make flash   # picotool load (hold BOOTSEL while plugging in the first time)
 | `src/ddr3.c` | Command encoding, mode registers, address split, and the cycle-by-cycle sequence builder (init, read, write, self-refresh, auto-inserted REFs). Pure logic. |
 | `src/spd.c` | DDR3 SPD decode and CRC. Pure logic. |
 | `src/bus_gpio.c` | Plays a sequence out by bit-banging, CPU-timed in quarter clocks. Interrupts off while it runs. |
-| `src/pio_enc.c` | The PIO executor's word streams (`../EXECUTOR.md`): a sequence as command and data words, one per run of identical cycles, and the PIO clock divider for a tCK. Pure logic. |
+| `src/pio_enc.c` | The PIO executor's word streams (`../EXECUTOR.md`): a sequence as one run-length-encoded stream per SM, and the PIO clock divider for a tCK. Pure logic. |
 | `src/dram.c` | Init and whole-burst reads and writes, shared by the shell and the link. Self-refresh between operations. |
 | `src/link.c` | ESP32 link, slave side: acts on complete frames of `../proto/ddrlink.h`. Pure logic. |
 | `src/link_spi.c` | The link's transport: SPI1 as a mode-3 slave, DMA both ways, CS interrupts, READY. |
 | `src/main.c` | The shell, and the link's memory backend. |
-| `src/pio/` | PIO programs: `ddr3_cmd.pio` (command/address + CK) so far. Assembled by pioasm, which the host tests build from the pico-sdk. |
+| `src/pio/` | The PIO executor's programs: `ddr3_cmd.pio` (C/A + CK, PIO0), `ddr3_wr.pio` (DQ/DQS/DIR, PIO1), `ddr3_smp.pio` (read sampling, PIO2). Assembled by pioasm, which the host tests build from the pico-sdk. See `../EXECUTOR.md`. |
 | `test/third_party/` | Submodules: nakomis/epio (host RP2350 PIO emulator, tag `v0.2.2-nakomis.2`) and apio v0.3.0, its headers. |
 | `test/pio_sim.c` | Runs PIO programs under epio, fed like DMA, recording the pins into the same log the JEDEC checker and DRAM model read. |
 | `test/` | Host tests (`make test`). `test/jedec.c` is an independent JEDEC timing checker: every sequence the firmware builds, at every clock it allows, read back off the simulated pins. `test/dram_model.c` is a behavioural DRAM on the same pins: it stores writes at their DQS edges and drives reads at RL, so `dram_write`/`dram_read` are tested byte for byte. |

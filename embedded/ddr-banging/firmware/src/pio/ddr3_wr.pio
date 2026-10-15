@@ -1,0 +1,54 @@
+; DDR3 write-data state machine (SINT-100, see ../../../EXECUTOR.md).
+;
+; PIO1, GPIOBASE 0, loaded at 0 (out pc dispatches to absolute addresses).
+; OUT pins 0..9 (DQ0-7 data; pindirs for DQ and DQS together). Side-set,
+; optional, base GPIO 8: bit 0 DQS, bit 1 DQS#, bit 2 DIR_DQ, bit 3 DIR_DQS
+; (translator direction, high = RP2350 -> DRAM).
+;
+; One 18-bit word per cycle that drives, or per run of idle cycles
+; (pio_enc.c): [1:0] kind = the address dispatched to; drive kinds carry
+; dq[0] in [9:2] and dq[1] in [17:10]; idle carries repeats in [17:2].
+; 8 SM cycles per CK on every path, like the cmd SM. Quarters (2 cycles
+; each) follow bus_run: q0 drive on/off and DQS low, q1 dq[0], q2 DQS
+; follows CK, q3 dq[1]. Turning on, DIR goes first and the pins second;
+; turning off, the reverse, so the translator and the RP2350 never fight.
+
+.pio_version 1   ; RP2350
+.program ddr3_wr
+.side_set 4 opt
+.origin 0
+
+    jmp idle                            ; 0: idle                         c0
+    jmp drive          side 0b1110      ; 1: drive, DQS low: DIR on first c0
+strobe:                                 ; 2: drive, DQS follows CK
+    nop                side 0b1110      ; c0: DIR on, DQS low, DQS# high
+    mov pindirs, ~null side 0b1110      ; c1: then drive DQ and DQS
+    out pins, 8        side 0b1110      ; c2: q1: dq[0]
+    nop                side 0b1110      ; c3
+    nop                side 0b1101      ; c4: q2: DQS rises with CK
+    nop                side 0b1101      ; c5
+    out pins, 8        side 0b1101      ; c6: q3: dq[1]
+    out pc, 2          side 0b1101      ; c7: next word
+drive:
+    mov pindirs, ~null side 0b1110      ; c1
+    out pins, 8        side 0b1110      ; c2: q1: dq[0]
+    nop                side 0b1110      ; c3
+    nop                side 0b1110      ; c4: q2: DQS stays low
+    nop                side 0b1110      ; c5
+    out pins, 8        side 0b1110      ; c6: q3: dq[1]
+    out pc, 2          side 0b1110      ; c7
+idle:
+    mov pindirs, null                   ; c1: stop driving first (DIR unchanged)
+    out x, 16          side 0b0000      ; c2: then translators back to DRAM -> RP2350
+idle_more:
+    nop                                 ; c3
+    nop                                 ; c4
+    nop                                 ; c5
+    jmp x-- idle_rep                    ; c6
+public start:                           ; (where the SM starts: no side-set, so DIR stays off)
+    out pc, 2                           ; c7
+idle_rep:
+    nop                                 ; c7
+    nop                                 ; c0
+    nop                                 ; c1
+    jmp idle_more                       ; c2
