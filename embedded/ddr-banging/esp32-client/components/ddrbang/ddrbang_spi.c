@@ -87,6 +87,6 @@ esp_err_t ddrbang_spi_open(const ddrbang_spi_config_t *cfg, ddrbang_t *d)
     if (!tx || !rx) return ESP_ERR_NO_MEM;
     ddrbang_transport_t t = { xfer, wait_ready, &ctx, tx, rx };
     ddrbang_init(d, &t);
-    d->timeout_ms = 30000;   // 8192 bursts, each a self-refresh exit at 1 MHz: ~5 s
+    d->timeout_ms = 10000;   // 64 KB of bursts: ~0.2 s at 1 MHz, ~1 s at tCK 3.9 us
     return ESP_OK;
 }

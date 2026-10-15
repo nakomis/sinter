@@ -99,6 +99,8 @@ runs a command, READY stays low and the ESP32 waits.
 Both sides are 3.3 V: wire them directly, with a common GND. SPI mode 3, at up
 to ~12 MHz (the RP2350 slave needs clk_peri ≥ 12 × SCK).
 
-Reads and writes go one burst at a time, each leaving and re-entering
-self-refresh: about 0.6 ms per 8 bytes at 1 MHz, so 128 MB takes hours each
-way. Batching bursts within a row is milestone 11.
+Reads and writes share one self-refresh exit between up to 256 bursts (2 KB),
+paying the REFs owed after every burst. That's about 380 KB/s at 1 MHz, so
+128 MB takes about 6 minutes each way, plus the SPI time. Each burst still
+opens and closes its own row; keeping a row open for several bursts (within
+tRAS max) is milestone 11.
