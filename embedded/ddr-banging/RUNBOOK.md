@@ -260,7 +260,7 @@ Build it all **with the stick out of the fixture**.
 
 | Translator | Channels (A side from GPIO, B side to header) | DIR | OE# |
 |---|---|---|---|
-| U1 | CK 16, CK# 17, CKE 18, CS0# 19, RAS# 21, CAS# 22, WE# 23, RESET# 15 | 3.3 V (A→B) | GND |
+| U1 | CK 16, CK# 17, CKE 18, CS0# 19, RAS# 21, CAS# 22, WE# 23, RESET# 12 | 3.3 V (A→B) | GND |
 | U2 | BA0 24, BA1 25, BA2 26, A0 27, A1 28, A2 29, A3 30, A4 31 | 3.3 V | GND |
 | U3 | A5 32 … A12 39 | 3.3 V | GND |
 | U4 | A13 40; channels 2–8 spare | 3.3 V | GND |
@@ -273,7 +273,7 @@ Build it all **with the stick out of the fixture**.
   unconnected, because S1# is tied high on the board.
 - **Strap headers:** **DM0 → VSS** (the firmware never drives it) and
   **ODT0 → VSS** (ODT stays off).
-- **RESET# pull-down:** a 10 kΩ from GPIO 15 / U1's A input to GND, so RESET#
+- **RESET# pull-down:** a 10 kΩ from GPIO 12 / U1's A input to GND, so RESET#
   stays low while the RP2350 boots and its GPIOs float.
 - **Optional:** 47 kΩ from each U5/U6 B pin to VSS. These stop the DQ inputs
   floating when the DRAM isn't driving (between reads). Fit them if the step-9
@@ -394,4 +394,29 @@ Take a photo.*
 - Note `temp` before and after. If the module ever reports ≥ 85 °C, tREFI
   halves, and the firmware has to follow.
 
-At this point, hand over to M10: the ESP32 SPI link.
+---
+
+## Step 12 — the ESP32 (M10): *an ESP32 with 128 MB of RAM*
+
+1. Wire the ESP32-S3 to the Core2350B as listed in `firmware/README.md`
+   ("ESP32 link"), with a common ground. Both are 3.3 V.
+2. Flash `esp32-client`:
+
+   ```
+   cd esp32-client
+   idf.py set-target esp32s3 build flash monitor
+   ```
+3. Expect `RP2350 link v1: 128 MB, tCK 1000 ns`, then the init, then progress
+   lines every 4 MB. A full pass takes hours each way, because each burst wakes
+   the DRAM from self-refresh.
+4. At the end, expect `PASSED: 0 bad words in 128 MB`. In the RP2350 shell,
+   `link` shows the same frame and error counts.
+
+**If something goes wrong:**
+- **`timed out waiting for READY`:** READY isn't wired, or the RP2350 isn't
+  running the firmware. With nothing attached, the ESP32's pull-down keeps
+  READY low.
+- **`corrupt reply`, or a climbing retry count:** shorten the wires, or drop
+  `clock_hz` in `main.c` to 2 MHz.
+- **Bad words but no link errors:** the link is fine and the DRAM isn't.
+  Go back to `t` in the shell.

@@ -10,10 +10,15 @@ add_executable(run_tests
     test_ddr3.c
     test_spd.c
     test_bus.c
+    test_link.c
     stubs/sim.c
     ../src/ddr3.c
     ../src/spd.c
     ../src/bus_gpio.c
+    ../src/link.c
+    ../../proto/ddrlink.c
+    ../../esp32-client/components/ddrbang/ddrbang.c
 )
 # stubs/ stands in for the pico-sdk hardware headers
-target_include_directories(run_tests PRIVATE ../src . stubs)
+target_include_directories(run_tests PRIVATE ../src . stubs ../../proto
+    ../../esp32-client/components/ddrbang/include)
