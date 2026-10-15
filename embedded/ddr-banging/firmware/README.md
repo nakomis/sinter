@@ -25,6 +25,7 @@ make flash   # picotool load (hold BOOTSEL while plugging in the first time)
 |---|---|
 | `src/ddr3.c` | Command encoding, mode registers, address split, and the cycle-by-cycle sequence builder (init, read, write, self-refresh, auto-inserted REFs). Pure logic. |
 | `src/spd.c` | DDR3 SPD decode and CRC. Pure logic. |
+| `src/pio_check.c` | The self-check's test sequence, expected pins per SM cycle, and comparison. Pure logic: the firmware's `selftest` and the host tests (under epio) share it. |
 | `src/bus.h`, `src/bus_pio.c` | The executor interface, and the PIO executor: three SMs, three TX DMA channels and one RX, the same programs and configuration as `test/pio_sim.c`. |
 | `src/bus_gpio.c` | Plays a sequence out by bit-banging, CPU-timed in quarter clocks. Interrupts off while it runs. |
 | `src/pio_enc.c` | The PIO executor's word streams (`../EXECUTOR.md`): a sequence as one run-length-encoded stream per SM, and the PIO clock divider for a tCK. Pure logic. |
@@ -58,6 +59,7 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
 | `hold <line>` / `hold off` | One line high, everything else low, for continuity checks. |
 | `walk [ms]` | Step `hold` through every line. |
 | `link` | ESP32 link statistics: command frames, errors, last error. |
+| `selftest` | The PIO executor checking itself on this chip, nothing attached (the DRAM is held in reset): a capture of GPIO 0–31 on every PIO cycle against the expected pins, and a loopback of written bursts through the sampler. Run `init` afterwards. |
 | `bus [pio\|gpio]` | Show or switch the executor: the CPU bit-banger (default, for bring-up) or the PIO executor (`../EXECUTOR.md`). The pins change hands without a glitch, the DRAM staying in self-refresh. `hold`/`walk` need `bus gpio`. |
 
 ## Wiring notes (spike)

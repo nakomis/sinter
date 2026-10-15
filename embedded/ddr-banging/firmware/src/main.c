@@ -14,6 +14,7 @@
 #include "dram.h"
 #include "link_spi.h"
 #include "pins.h"
+#include "pio_check.h"
 #include "spd.h"
 
 
@@ -307,7 +308,8 @@ static void help(void)
            "hold <line>|off     one line high, all others low (continuity)\n"
            "walk [ms]           step 'hold' through every line\n"
            "link                ESP32 link statistics\n"
-           "bus [pio|gpio]      show or switch the executor (PIO, or CPU bit-bang)\n");
+           "bus [pio|gpio]      show or switch the executor (PIO, or CPU bit-bang)\n"
+           "selftest            check the PIO executor on this chip (DRAM held in reset)\n");
 }
 
 // ---- ESP32 link -----------------------------------------------------------
@@ -354,6 +356,61 @@ static void cmd_bus(char *arg)
     if (dram_bus() == &bus_pio_ops && bus_pio_error()) printf("last PIO error: %s\n", bus_pio_error());
 }
 
+// The PIO executor checking itself, with nothing needing to be attached: a
+// capture SM records GPIO 0-31 on every SM cycle of a test sequence, and the
+// sampler reads the writer's bursts back through the pads (pio_check.h). The
+// DRAM is held in reset throughout (CKE stays low too), so 'init' afterwards.
+static void cmd_selftest(void)
+{
+    static ddr3_cycle_t cyc[PIO_CHECK_CYCLES];
+    static uint32_t capture[PIO_CHECK_CAPTURE];
+    static bus_sample_t smp[PIO_CHECK_CYCLES];
+    const bus_ops_t *was = dram_bus();
+    uint32_t tck_was = was->tck();
+    if (was != &bus_pio_ops) bus_pio_take_pins();
+    bus_reset(true);
+    dram_forget();
+
+    // two clocks with at least 3 system clocks per SM cycle: the check reads
+    // the pads through the input synchroniser and assumes they've settled
+    const uint32_t tcks[] = { 1000, 250 };
+    bool all = true;
+    for (unsigned k = 0; k < sizeof tcks / sizeof tcks[0]; k++) {
+        ddr3_seq_t s;
+        ddr3_seq_init(&s, cyc, PIO_CHECK_CYCLES, tcks[k]);
+        s.len = pio_check_sequence(cyc, PIO_CHECK_CYCLES);
+        uint32_t tck = bus_pio_ops.set_tck(tcks[k]);
+        s.tck_ns = tck;
+        memset(capture, 0, sizeof capture);
+        bool ran = bus_pio_run_captured(&s, smp, PIO_CHECK_CYCLES, capture, PIO_CHECK_CAPTURE);
+        pio_check_result_t r;
+        bool ok = ran && pio_check(cyc, s.len, capture, PIO_CHECK_CAPTURE, smp, PIO_CHECK_CYCLES, &r);
+        all &= ok;
+        printf("tCK %lu ns: %s\n", (unsigned long)tck, ok ? "PASS" : "FAIL");
+        if (!ran) {
+            printf("  run failed: %s\n", bus_pio_error() ? bus_pio_error() : "?");
+            continue;
+        }
+        if (r.offset < 0) {
+            printf("  no CK in the capture: PIO2 didn't start with PIO0 (PREV mask), or no clock\n");
+            continue;
+        }
+        printf("  capture: CK 0 at word %d; %u SM cycles with a wrong pin", r.offset, r.pin_errors);
+        if (r.pin_errors)
+            printf(" (first at CK %u c%u: want %08lx got %08lx on %08lx)", r.first_bad / 8,
+                   r.first_bad % 8, (unsigned long)r.first_want, (unsigned long)r.first_got,
+                   (unsigned long)r.first_mask);
+        printf("\n  loopback: %u of %u beats read back right\n", r.samples - r.loop_errors, r.samples);
+    }
+    printf("%s: three SMs in step, PIO2 started from PIO0, 16-bit RX pops %s\n",
+           all ? "PASS" : "FAIL", all ? "all confirmed" : "- see above");
+
+    bus_pio_ops.set_tck(tck_was);
+    if (was != &bus_pio_ops) bus_pio_give_pins();
+    if (was == &bus_gpio_ops) bus_gpio_ops.set_tck(tck_was);
+    printf("DRAM held in reset: run 'init' before using it\n");
+}
+
 static void cmd_link(void)
 {
     printf("ESP32 link: %lu command frames, %lu errors, last error: %s\n",
@@ -378,6 +435,7 @@ static void dispatch(char *line)
     else if (!strcmp(cmd, "walk")) cmd_walk(a1);
     else if (!strcmp(cmd, "link")) cmd_link();
     else if (!strcmp(cmd, "bus")) cmd_bus(a1);
+    else if (!strcmp(cmd, "selftest")) cmd_selftest();
     else help();
 }
 
