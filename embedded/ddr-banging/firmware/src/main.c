@@ -15,7 +15,6 @@
 #include "pins.h"
 #include "spd.h"
 
-#define TCK_MAX_NS 3400    // see cmd_tck
 
 // ---- helpers --------------------------------------------------------------
 
@@ -60,6 +59,9 @@ static void cmd_spd(void)
            d.row_bits, d.col_bits, d.bus_width, d.ecc ? "+ECC" : "",
            d.v1_5 ? "1.5 V" : "not 1.5 V", (unsigned long)d.tck_min_ps,
            (unsigned long)d.taa_min_ps, d.cas_latencies);
+    printf("extended temperature: %s%s; auto self-refresh: %s; thermal sensor: %s\n",
+           d.ext_temp ? "yes" : "no", d.ext_temp ? (d.ext_temp_1x ? " (1x refresh)" : " (2x refresh)") : "",
+           d.asr ? "yes" : "no", d.thermal_sensor ? "yes" : "no");
 }
 
 // Module temperature in 1/16 C, or false if there's no thermal sensor.
@@ -81,7 +83,7 @@ static void cmd_temp(void)
         return;
     }
     printf("module %d.%02d C%s\n", t / 16, (abs(t) % 16) * 100 / 16,
-           t >= 85 * 16 ? "  (>= 85 C: tREFI halves to 3.9 us)" : "");
+           t >= DRAM_HOT_C16 ? "  (hot: 2x refresh, tCK capped at 1.7 us)" : "");
 }
 
 static void report_dram_error(void)
@@ -89,14 +91,31 @@ static void report_dram_error(void)
     printf("failed: %s\n", dram_error() ? dram_error() : "unknown");
 }
 
+// Before init: whether the chips allow extended-temperature self-refresh
+// (SPD byte 31). An unreadable SPD counts as no.
+static bool prepare_init(void)
+{
+    uint8_t raw[SPD_LEN], zero = 0;
+    spd_info_t d = { 0 };
+    if (i2c_write_blocking(i2c1, SPD_I2C_ADDR, &zero, 1, true) == 1 &&
+        i2c_read_blocking(i2c1, SPD_I2C_ADDR, raw, SPD_LEN, false) == SPD_LEN)
+        spd_decode(raw, &d);
+    bool ext = d.is_ddr3 && d.crc_ok && d.ext_temp;
+    dram_set_extended_temp(ext);
+    return ext;
+}
+
 static void cmd_init(void)
 {
+    bool ext = prepare_init();
     if (!dram_init()) {
         report_dram_error();
         return;
     }
     printf("initialised (DLL off, CL6, CWL6, BL8); MR0 %04x MR1 %04x MR2 %04x MR3 %04x; "
            "now in self-refresh\n", ddr3_mr0(), ddr3_mr1(), ddr3_mr2(), ddr3_mr3());
+    printf("extended temperature range: %s%s\n", ext ? "yes (SRT on)" : "no (keep it below 80 C)",
+           dram_hot() ? "; module is hot: 2x refresh" : "");
 }
 
 static void print_window(void)
@@ -151,50 +170,69 @@ static void pattern(uint32_t addr, uint8_t d[8])
     for (int k = 0; k < 8; k++) d[k] = (uint8_t)((addr >> 3) * 0x9E + k * 0x3B + (addr >> 11));
 }
 
-static void cmd_test(char *a, char *count)
+// Write (unless verify_only) then check n bursts of the address pattern, in
+// 2 KB chunks. 'v' alone reads back what an earlier 't' wrote: the soak test
+// (RUNBOOK step 11) after the DRAM has sat in self-refresh.
+static void check_pattern(char *a, char *count, bool verify_only)
 {
     if (need_init()) return;
+    static uint8_t want[2048], got[2048];
     uint32_t addr = a ? strtoul(a, NULL, 0) & ~7u : 0;
     uint32_t n = count ? strtoul(count, NULL, 0) : 16;
-    uint8_t d[8], got[8];
-    for (uint32_t i = 0; i < n; i++) {
-        pattern(addr + 8 * i, d);
-        if (!dram_write_burst(addr + 8 * i, d)) { report_dram_error(); return; }
+    if (n > (DDR3_CHIP_BYTES - (addr < DDR3_CHIP_BYTES ? addr : DDR3_CHIP_BYTES)) / 8) {
+        printf("past the end of the chip (%lu MB)\n", (unsigned long)(DDR3_CHIP_BYTES >> 20));
+        return;
     }
+    uint64_t t0 = time_us_64();
+    if (!verify_only)
+        for (uint32_t i = 0; i < n;) {
+            uint32_t k = n - i < sizeof want / 8 ? n - i : sizeof want / 8;
+            for (uint32_t j = 0; j < k; j++) pattern(addr + 8 * (i + j), want + 8 * j);
+            if (!dram_write(addr + 8 * i, want, 8 * k)) { report_dram_error(); return; }
+            i += k;
+        }
+    uint64_t t1 = time_us_64();
     uint32_t bad = 0;
-    for (uint32_t i = 0; i < n; i++) {
-        uint32_t x = addr + 8 * i;
-        pattern(x, d);
-        if (!dram_read_burst(x, got)) { report_dram_error(); return; }
-        if (memcmp(d, got, 8)) {
+    for (uint32_t i = 0; i < n;) {
+        uint32_t k = n - i < sizeof got / 8 ? n - i : sizeof got / 8;
+        if (!dram_read(addr + 8 * i, got, 8 * k)) { report_dram_error(); return; }
+        for (uint32_t j = 0; j < k; j++) {
+            uint32_t x = addr + 8 * (i + j);
+            uint8_t d[8];
+            pattern(x, d);
+            if (!memcmp(d, got + 8 * j, 8)) continue;
             if (bad++ < 8) {
                 printf("0x%08lx want", (unsigned long)x);
-                for (int k = 0; k < 8; k++) printf(" %02x", d[k]);
+                for (int q = 0; q < 8; q++) printf(" %02x", d[q]);
                 printf("  got");
-                for (int k = 0; k < 8; k++) printf(" %02x", got[k]);
+                for (int q = 0; q < 8; q++) printf(" %02x", got[8 * j + q]);
                 printf("\n");
             }
         }
+        i += k;
     }
-    printf("%lu of %lu bursts read back correctly\n", (unsigned long)(n - bad), (unsigned long)n);
+    uint64_t t2 = time_us_64();
+    printf("%lu of %lu bursts read back correctly", (unsigned long)(n - bad), (unsigned long)n);
+    if (!verify_only && t1 > t0)
+        printf("; write %.0f KB/s", 8.0 * n / 1.024 / (double)(t1 - t0) * 1000.0);
+    if (t2 > t1) printf("; read %.0f KB/s", 8.0 * n / 1.024 / (double)(t2 - t1) * 1000.0);
+    printf("\n");
 }
 
 static void cmd_tck(char *arg)
 {
     if (arg) {
         long ns = strtol(arg, NULL, 0);
-        // DLL-off: tCK >= 8 ns, and no maximum beyond refresh. But no REF can
-        // go in while a write's row is open (ACT to the next REF: 18 CK worst
-        // case), and JEDEC allows only 8 postponed: 18 x tCK <= 8 x tREFI.
-        if (ns < 250 || ns > TCK_MAX_NS) {
-            printf("tck must be 250..%d ns\n", TCK_MAX_NS);
+        // DLL-off: tCK >= 8 ns, and no maximum beyond refresh (DDR3_TCK_MAX_NS)
+        if (ns < 250 || ns > (long)DDR3_TCK_MAX_NS) {
+            printf("tck must be 250..%u ns\n", DDR3_TCK_MAX_NS);
             return;
         }
         // changing the clock is allowed while the DRAM is in self-refresh
         uint32_t got = bus_set_tck((uint32_t)ns);
         if (got > (uint32_t)ns + (uint32_t)ns / 10)
             printf("note: the bit-bang loop can't go that fast\n");
-        if (got > (uint32_t)TCK_MAX_NS) {
+        if (got > DDR3_TCK_MAX_NS) {
             printf("measured period %lu ns is too slow; back to 1000 ns\n", (unsigned long)got);
             bus_set_tck(1000);
         }
@@ -251,6 +289,7 @@ static void help(void)
            "w <addr> <hex16>    write one 8-byte burst\n"
            "r <addr>            read one burst, showing the raw sample window\n"
            "t [addr] [n]        write then verify n bursts of a pattern\n"
+           "v [addr] [n]        verify only (after t, e.g. to soak in self-refresh)\n"
            "tck [ns]            show or set the clock period (250..3400)\n"
            "hold <line>|off     one line high, all others low (continuity)\n"
            "walk [ms]           step 'hold' through every line\n"
@@ -259,7 +298,7 @@ static void help(void)
 
 // ---- ESP32 link -----------------------------------------------------------
 
-static bool be_init(void *c) { (void)c; return dram_init(); }
+static bool be_init(void *c) { (void)c; prepare_init(); return dram_init(); }
 static bool be_ready(void *c) { (void)c; return dram_initialised(); }
 static uint32_t be_tck(void *c) { (void)c; return bus_tck(); }
 static bool be_write(void *c, uint32_t a, const uint8_t *d, uint32_t n) { (void)c; return dram_write(a, d, n); }
@@ -295,7 +334,8 @@ static void dispatch(char *line)
     else if (!strcmp(cmd, "init")) cmd_init();
     else if (!strcmp(cmd, "w")) cmd_write(a1, a2);
     else if (!strcmp(cmd, "r")) cmd_read(a1);
-    else if (!strcmp(cmd, "t")) cmd_test(a1, a2);
+    else if (!strcmp(cmd, "t")) check_pattern(a1, a2, false);
+    else if (!strcmp(cmd, "v")) check_pattern(a1, a2, true);
     else if (!strcmp(cmd, "tck")) cmd_tck(a1);
     else if (!strcmp(cmd, "hold")) cmd_hold(a1);
     else if (!strcmp(cmd, "walk")) cmd_walk(a1);
@@ -312,6 +352,7 @@ int main(void)
     gpio_set_function(PIN_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(PIN_SDA);   // weak; the fixture should have proper pull-ups
     gpio_pull_up(PIN_SCL);
+    dram_set_thermometer(read_temp16);
     link_init(&link, &backend, link_reply);
     link_spi_init(&link);
 

@@ -15,6 +15,42 @@ static bus_sample_t samples[RUN_BURSTS * DDR3_READ_WINDOW_CYCLES];
 static unsigned n_samples;
 static bool initialised;
 static const char *error;
+static bool (*thermometer)(int *t16);
+static bool extended_temp, hot;
+
+void dram_set_thermometer(bool (*read16)(int *t16))
+{
+    thermometer = read16;
+    hot = false;
+}
+bool dram_hot(void) { return hot; }
+
+void dram_set_extended_temp(bool supported)
+{
+    extended_temp = supported;
+    ddr3_set_srt(supported);
+}
+
+// Before every operation: track hot/cool with hysteresis, and make the clock
+// legal for the refresh rate. The DRAM is in self-refresh (or not yet
+// initialised) here, so changing tCK is allowed.
+static bool thermal_ok(void)
+{
+    int t;
+    // a failed reading keeps the last state: a flaky bus while hot stays hot
+    if (thermometer && thermometer(&t)) hot = t >= (hot ? DRAM_COOL_C16 : DRAM_HOT_C16);
+    if (!hot) return true;
+    if (!extended_temp) {
+        error = "module at 80 C or more, and its SPD doesn't claim the extended range";
+        return false;
+    }
+    if (bus_tck() > DDR3_TCK_MAX_HOT_NS) bus_set_tck(DDR3_TCK_MAX_HOT_NS);
+    if (bus_tck() > DDR3_TCK_MAX_HOT_NS) {
+        error = "hot, and the clock can't be brought within the 2x refresh limit";
+        return false;
+    }
+    return true;
+}
 
 bool dram_initialised(void) { return initialised; }
 void dram_forget(void) { initialised = false; }
@@ -29,6 +65,7 @@ const bus_sample_t *dram_samples(unsigned *n)
 static void seq_start(ddr3_seq_t *s)
 {
     ddr3_seq_init(s, seq_buf, SEQ_CAP, bus_tck());
+    ddr3_seq_set_hot(s, hot);
     s->cke = initialised;
 }
 
@@ -49,6 +86,7 @@ bool dram_init(void)
 {
     // RESET# low >= 200 us with CKE low, then 500 us before CKE goes high
     initialised = false;
+    if (!thermal_ok()) return false;
     bus_reset(true);
     sleep_us(200);
     bus_reset(false);
@@ -116,6 +154,7 @@ static void unpack_reads(uint8_t *out)
 
 bool dram_write(uint32_t addr, const uint8_t *d, uint32_t len)
 {
+    if (!thermal_ok()) return false;
     for (uint32_t done = 0; done < len;) {
         uint32_t n = (len - done) / 8 < RUN_BURSTS ? (len - done) / 8 : RUN_BURSTS;
         ddr3_seq_t s;
@@ -127,6 +166,7 @@ bool dram_write(uint32_t addr, const uint8_t *d, uint32_t len)
 
 bool dram_read(uint32_t addr, uint8_t *d, uint32_t len)
 {
+    if (!thermal_ok()) return false;
     for (uint32_t done = 0; done < len;) {
         uint32_t n = (len - done) / 8 < RUN_BURSTS ? (len - done) / 8 : RUN_BURSTS;
         ddr3_seq_t s;

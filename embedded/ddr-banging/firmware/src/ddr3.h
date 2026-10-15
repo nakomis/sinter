@@ -59,7 +59,8 @@ uint32_t ddr3_encode(ddr3_cmd_t cmd, unsigned ba, unsigned addr, bool cke);
 
 uint16_t ddr3_mr0(void);  // BL8, sequential, CL6, no DLL reset, WR=6
 uint16_t ddr3_mr1(void);  // DLL off, RZQ/6 drive, RTT_NOM off, AL=0
-uint16_t ddr3_mr2(void);  // CWL6, RTT_WR off
+uint16_t ddr3_mr2(void);  // CWL6, RTT_WR off, SRT per ddr3_set_srt
+void ddr3_set_srt(bool on);   // MR2 A7: extended-temperature self-refresh
 uint16_t ddr3_mr3(void);  // 0
 
 // ---- Addressing ---------------------------------------------------------
@@ -99,6 +100,15 @@ typedef struct {
 } ddr3_seq_t;
 
 void ddr3_seq_init(ddr3_seq_t *s, ddr3_cycle_t *buf, size_t cap, uint32_t tck_ns);
+
+// Above 85 C (Tcase) tREFI halves to 3.9 us. Call right after init.
+void ddr3_seq_set_hot(ddr3_seq_t *s, bool hot);
+
+// Longest clock period the refresh schedule allows: a write's row stays open
+// up to 18 CK before the next REF, and only 8 REFs may be postponed, so
+// 18 x tCK <= 8 x tREFI. Halves when hot.
+#define DDR3_TCK_MAX_NS     3400u
+#define DDR3_TCK_MAX_HOT_NS 1700u
 
 // Append one cycle carrying `cmd`. Lower-level than the helpers below.
 void ddr3_seq_cmd(ddr3_seq_t *s, ddr3_cmd_t cmd, unsigned ba, unsigned addr);

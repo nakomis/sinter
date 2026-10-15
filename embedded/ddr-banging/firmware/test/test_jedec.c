@@ -177,6 +177,103 @@ static void test_dram_round_trip_through_the_model(void)
     }
 }
 
+// Hot: every sequence again at the 2x refresh rate, up to the hot tCK cap
+static void test_hot_sequences_meet_jedec(void)
+{
+    static uint8_t d[8 * 128];
+    const uint32_t hot_tcks[] = { 250, 1000, 1700 };
+    jedec_set_hot(true);
+    for (int k = 0; k < 3; k++)
+        for (int rd = 0; rd < 2; rd++) {
+            ddr3_seq_t s;
+            ddr3_seq_init(&s, big, 8192, hot_tcks[k]);
+            ddr3_seq_set_hot(&s, true);
+            ddr3_seq_srx(&s);
+            unsigned n = ddr3_seq_row_bursts(&s);
+            for (unsigned r = 0; r < 6; r++) {
+                uint32_t a = (r << 13) | (1024u - 8u * n);
+                if (rd) ddr3_seq_read_run(&s, a, n);
+                else ddr3_seq_write_run(&s, a, d, n);
+            }
+            ddr3_seq_sre(&s);
+            CHECK(!s.overflow);
+            CHECK_EQ(jedec_check_seq(&s, true), 0);
+        }
+    jedec_set_hot(false);
+}
+
+static int fake_temp16;
+static bool have_sensor;
+static bool fake_thermometer(int *t16)
+{
+    *t16 = fake_temp16;
+    return have_sensor;
+}
+
+static void start_sim(uint32_t tck)
+{
+    sim_reset();
+    bus_init();
+    bus_set_tck(tck);
+    sim_reset();
+    model_reset();
+    sim_input = model_input;
+}
+
+// dram.c on a warm bench: switches to 2x refresh with hysteresis, caps tCK,
+// and refuses to run hot on a stick without the extended range
+static void test_dram_follows_the_temperature(void)
+{
+    static uint8_t data[2048], back[2048];
+    for (size_t i = 0; i < sizeof data; i++) data[i] = (uint8_t)(i ^ 0x5A);
+    dram_set_thermometer(fake_thermometer);
+    have_sensor = true;
+
+    // extended range, hot at tCK 3.4 us: clock capped, 2x schedule on the pins
+    dram_set_extended_temp(true);
+    CHECK(ddr3_mr2() & 0x80);
+    fake_temp16 = 81 * 16;
+    start_sim(3400);
+    CHECK(dram_init());
+    CHECK(dram_hot());
+    CHECK(bus_tck() <= DDR3_TCK_MAX_HOT_NS);
+    CHECK(dram_write(0x400, data, sizeof data));
+    CHECK(dram_read(0x400, back, sizeof back));
+    CHECK(memcmp(back, data, sizeof data) == 0);
+    jedec_set_hot(true);
+    CHECK_EQ(jedec_check_pins(bus_tck(), false), 0);
+    jedec_set_hot(false);
+
+    // hysteresis: 79 C stays hot, 77 C is cool again
+    fake_temp16 = 79 * 16;
+    CHECK(dram_read(0x400, back, 8));
+    CHECK(dram_hot());
+    fake_temp16 = 77 * 16;
+    CHECK(dram_read(0x400, back, 8));
+    CHECK(!dram_hot());
+
+    // no extended range: hot means stop
+    dram_set_extended_temp(false);
+    CHECK(!(ddr3_mr2() & 0x80));
+    fake_temp16 = 82 * 16;
+    CHECK(!dram_read(0x400, back, 8));
+    CHECK(dram_error() != NULL);
+
+    // a failed read while hot stays hot
+    have_sensor = false;
+    CHECK(!dram_read(0x400, back, 8));
+    CHECK(dram_hot());
+
+    // no sensor at all: cool
+    dram_set_thermometer(fake_thermometer);
+    fake_temp16 = 99 * 16;
+    CHECK(dram_read(0x400, back, 8));
+    CHECK(!dram_hot());
+
+    dram_set_thermometer(NULL);
+    sim_input = NULL;
+}
+
 void test_jedec(void)
 {
     RUN(test_checker_catches_violations);
@@ -186,4 +283,6 @@ void test_jedec(void)
     RUN(test_row_runs_meet_jedec);
     RUN(test_dram_on_the_pins_meets_jedec);
     RUN(test_dram_round_trip_through_the_model);
+    RUN(test_hot_sequences_meet_jedec);
+    RUN(test_dram_follows_the_temperature);
 }

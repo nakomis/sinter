@@ -273,6 +273,22 @@ static void test_self_refresh_entry_converges_when_slow(void)
     CHECK(refs >= 9);
 }
 
+static void test_srt_and_hot_refresh(void)
+{
+    ddr3_set_srt(false);
+    CHECK_EQ(ddr3_mr2(), 0x0008);
+    ddr3_set_srt(true);
+    CHECK_EQ(ddr3_mr2(), 0x0088);          // A7 = SRT
+    ddr3_set_srt(false);
+    ddr3_seq_t s;
+    ddr3_seq_init(&s, buf, 4096, 1000);
+    ddr3_seq_set_hot(&s, true);
+    CHECK_EQ(s.ref_interval, 3);           // 3.9 us / 1 us
+    CHECK_EQ(ddr3_seq_row_bursts(&s), 2);
+    ddr3_seq_set_hot(&s, false);
+    CHECK_EQ(s.ref_interval, 7);
+}
+
 static void test_row_bursts_by_clock(void)
 {
     ddr3_seq_t s;
@@ -484,6 +500,7 @@ void test_ddr3(void)
     RUN(test_command_session_stays_within_8_postponed);
     RUN(test_batched_bursts_keep_refresh_pace);
     RUN(test_self_refresh_entry_converges_when_slow);
+    RUN(test_srt_and_hot_refresh);
     RUN(test_row_bursts_by_clock);
     RUN(test_write_run_layout);
     RUN(test_read_run_window);

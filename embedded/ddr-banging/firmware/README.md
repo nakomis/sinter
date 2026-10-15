@@ -46,7 +46,8 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
 | `init` | RESET#, then DLL-off init (MR2, MR3, MR1, MR0, ZQCL), then self-refresh. |
 | `w <addr> <hex16>` | Write one 8-byte burst. |
 | `r <addr>` | Read one burst; prints the whole sample window with DQS levels. |
-| `t [addr] [n]` | Write then verify `n` bursts of a pattern. |
+| `t [addr] [n]` | Write then verify `n` bursts of a pattern, and report KB/s. |
+| `v [addr] [n]` | Verify only: read back what an earlier `t` wrote (soak tests). |
 | `tck [ns]` | Show or set the clock period (250 to 3400 ns; default 1000). |
 | `hold <line>` / `hold off` | One line high, everything else low, for continuity checks. |
 | `walk [ms]` | Step `hold` through every line. |
@@ -78,6 +79,14 @@ Connect with `screen /dev/tty.usbmodem* 115200` (or any serial terminal).
   inserts them whenever every bank is closed, and pays back REFs postponed
   while a row was open (up to 8 may be postponed), paying them all off before
   entering self-refresh.
+- **Temperature:** above 85 °C Tcase, tREFI halves to 3.9 µs, and self-refresh
+  only holds data with MR2's SRT bit set, which is only allowed for chips with
+  the extended range (SPD byte 31). `init` reads the SPD and sets SRT when it
+  may. Every DRAM operation reads the on-module sensor first. From 80 °C
+  (margin for sensor accuracy and case offset), the firmware switches to the
+  2× schedule and caps tCK at 1.7 µs; below 78 °C it switches back. A stick
+  that is hot but lacks the extended range gets an error instead. No sensor:
+  assumed cool.
 - **Between commands the DRAM is in self-refresh**, so the clock can stop.
   Each command exits self-refresh (waiting 512 clocks, refreshing), does its
   work, and re-enters.
