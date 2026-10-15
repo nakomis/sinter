@@ -294,14 +294,17 @@ static void test_dram_uses_the_selected_bus(void)
     uint8_t b[16] = { 0 };
     CHECK(dram_bus() == &bus_gpio_ops);   // the default
     dram_set_bus(&fake_bus);
-    fake_runs = 0;
     fake_ok = true;
+    CHECK(dram_init());
+    CHECK(dram_initialised());
+    fake_runs = 0;
     CHECK(dram_write(0, b, 16));
     CHECK_EQ(fake_runs, 1);
     CHECK_EQ(fake_tck_seen, 1234);        // sequences built for its clock
     fake_ok = false;
     CHECK(!dram_read(0, b, 16));          // its failure is the operation's
     CHECK(dram_error() != NULL);
+    CHECK(!dram_initialised());           // and the DRAM must be initialised again
     dram_set_bus(&bus_gpio_ops);
 }
 

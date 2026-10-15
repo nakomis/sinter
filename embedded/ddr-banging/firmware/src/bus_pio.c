@@ -101,8 +101,10 @@ void bus_pio_take_pins(void)
 void bus_pio_give_pins(void)
 {
     // the CPU's output latches take the levels PIO left, then the pads
+    // DIR goes back low regardless: the bit-banger only drives the translators
+    // when it means to (its drive state is "off")
     uint64_t mask = CA_MASK64 | DQ_MASK64 | DIR_MASK64;
-    gpio_put_masked64(mask, gpio_get_all64());
+    gpio_put_masked64(mask, gpio_get_all64() & ~DIR_MASK64);
     for (uint pin = PIN_DQ0; pin <= PIN_DIR_DQS; pin++) gpio_set_function(pin, GPIO_FUNC_SIO);
     for (uint pin = PIN_CA_BASE; pin < PIN_CA_BASE + CA_BITS; pin++) gpio_set_function(pin, GPIO_FUNC_SIO);
 }
@@ -114,7 +116,7 @@ static void rewind(PIO p, uint pc)
     pio_sm_clear_fifos(p, SM);
     pio_sm_restart(p, SM);
     pio_sm_exec(p, SM, pio_encode_jmp(pc));
-    p->fdebug = 1u << (PIO_FDEBUG_TXSTALL_LSB + SM);
+    p->fdebug = (1u << (PIO_FDEBUG_TXSTALL_LSB + SM)) | (1u << (PIO_FDEBUG_RXSTALL_LSB + SM));
 }
 
 static void feed(int ch, PIO p, const uint32_t *words, size_t n)
@@ -132,15 +134,36 @@ static bool stalled(PIO p)
     return (p->fdebug >> (PIO_FDEBUG_TXSTALL_LSB + SM)) & 1;
 }
 
-static void stop(void)
+static void abort_channel(int ch)
+{
+    // RP2350-E5: clear EN before aborting, or the abort can re-trigger it
+    hw_clear_bits(&dma_hw->ch[ch].al1_ctrl, DMA_CH0_CTRL_TRIG_EN_BITS);
+    dma_channel_abort(ch);
+}
+
+static void stop(bool failed)
 {
     pio_sm_set_enabled(CMD_PIO, SM, false);
     pio_sm_set_enabled(WR_PIO, SM, false);
     pio_sm_set_enabled(SMP_PIO, SM, false);
-    dma_channel_abort(ch_cmd);
-    dma_channel_abort(ch_wr);
-    dma_channel_abort(ch_smp);
-    dma_channel_abort(ch_rx);
+    abort_channel(ch_cmd);
+    abort_channel(ch_wr);
+    abort_channel(ch_smp);
+    abort_channel(ch_rx);
+    if (failed) {
+        // wherever it stopped: RP2350 off DQ/DQS first, then the translators
+        // back to DRAM -> RP2350, so nothing fights whatever comes next
+        pio_sm_set_pindirs_with_mask64(WR_PIO, SM, 0, DQ_MASK64);
+        pio_sm_set_pins_with_mask64(WR_PIO, SM, 0, DIR_MASK64);
+    }
+}
+
+// An SM that stalled while its stream still had words in flight ran dry
+// mid-sequence (DMA too slow): the three are no longer in step. The sampler
+// stalling on a full RX FIFO is the same.
+static bool underran(PIO p, int ch)
+{
+    return stalled(p) && (dma_channel_is_busy(ch) || !pio_sm_is_tx_fifo_empty(p, SM));
 }
 
 static bool pio_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_samples)
@@ -189,23 +212,35 @@ static bool pio_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_sam
     uint64_t t0 = time_us_64();
     pio_enable_sm_multi_mask_in_sync(CMD_PIO, 1u << SM, 1u << SM, 1u << SM);
 
-    // Done when every stream is spent and every SM has stalled on its empty
-    // FIFO (the cmd SM with CK low, the DRAM in self-refresh), and every
-    // sample is in. Twice the expected time, plus a millisecond, is a fault.
-    uint64_t limit = t0 + 2 * (uint64_t)s->len * tck_ns / 1000 + 1000;
+    // The three SMs are deterministic: the sequence takes exactly len x tCK
+    // from the start. Done once that (plus two cycles' grace) has passed and
+    // every stream is spent and every sample is in; by then each SM has
+    // stalled on its empty FIFO, the cmd SM with CK low and the DRAM in
+    // self-refresh. (Not FDEBUG TXSTALL: whether it re-asserts while an SM
+    // stays stalled isn't documented.) Twice the time, plus 1 ms, is a fault.
+    uint64_t need_us = ((uint64_t)(s->len + 2) * tck_ns + 999) / 1000;
+    uint64_t limit = t0 + 2 * need_us + 1000;
     for (;;) {
+        uint64_t now = time_us_64();
         bool fed = !dma_channel_is_busy(ch_cmd) && !dma_channel_is_busy(ch_wr) &&
                    !dma_channel_is_busy(ch_smp) && pio_sm_is_tx_fifo_empty(CMD_PIO, SM) &&
                    pio_sm_is_tx_fifo_empty(WR_PIO, SM) && pio_sm_is_tx_fifo_empty(SMP_PIO, SM);
-        if (fed && stalled(CMD_PIO) && stalled(WR_PIO) && stalled(SMP_PIO) &&
-            (!want || !dma_channel_is_busy(ch_rx)))
+        if (underran(CMD_PIO, ch_cmd) || underran(WR_PIO, ch_wr) || underran(SMP_PIO, ch_smp) ||
+            ((SMP_PIO->fdebug >> (PIO_FDEBUG_RXSTALL_LSB + SM)) & 1)) {
+            error = "a state machine ran dry mid-sequence (DMA underrun)";
             break;
-        if (time_us_64() > limit) {
+        }
+        if (fed && now - t0 >= need_us && (!want || !dma_channel_is_busy(ch_rx))) {
+            // every SM is now waiting for a word that will never come
+            if (!stalled(CMD_PIO)) error = "command SM still running after its stream";
+            break;
+        }
+        if (now > limit) {
             error = "timed out";
             break;
         }
     }
-    stop();
+    stop(error != NULL);
     return error == NULL;
 }
 

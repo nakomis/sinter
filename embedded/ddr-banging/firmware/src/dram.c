@@ -82,7 +82,9 @@ static bool run(ddr3_seq_t *s)
         return false;
     }
     if (!bus->run(s, samples, sizeof samples / sizeof samples[0])) {
+        // stopped part-way: the DRAM may be anywhere, so 'init' again
         error = "the bus executor couldn't play the sequence";
+        initialised = false;
         return false;
     }
     n_samples = 0;
