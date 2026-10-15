@@ -2,7 +2,10 @@
 
 #include "hardware/dma.h"
 #include "hardware/gpio.h"
+#include "hardware/irq.h"
+#include "hardware/resets.h"
 #include "hardware/spi.h"
+#include "hardware/sync.h"
 
 #include "pins.h"
 
@@ -31,9 +34,16 @@ static void arm(void)
         dma_channel_abort(rx_ch);
         dma_channel_abort(tx_ch);
     }
-    spi_init(LINK_SPI, 10 * 1000 * 1000);   // resets the block; baud unused as a slave
-    spi_set_format(LINK_SPI, 8, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
-    spi_set_slave(LINK_SPI, true);
+    // Registers by hand, not spi_init(): that enables the block as a mode-0
+    // master first, driving SCK low against the ESP32's idle-high SCK.
+    reset_unreset_block_num_wait_blocking(RESET_SPI1);
+    spi_hw_t *hw = spi_get_hw(LINK_SPI);
+    hw->cpsr = 2;                                   // unused as a slave, but must be even
+    hw->cr0 = (8 - 1) << SPI_SSPCR0_DSS_LSB         // 8-bit, Motorola, mode 3
+            | SPI_SSPCR0_SPO_BITS | SPI_SSPCR0_SPH_BITS;
+    hw->cr1 = SPI_SSPCR1_MS_BITS;                   // slave, still disabled
+    hw->dmacr = SPI_SSPDMACR_TXDMAE_BITS | SPI_SSPDMACR_RXDMAE_BITS;
+    hw->cr1 = SPI_SSPCR1_MS_BITS | SPI_SSPCR1_SSE_BITS;
 
     io_rw_32 *dr = &spi_get_hw(LINK_SPI)->dr;
     dma_channel_config c = dma_channel_get_default_config(rx_ch);
@@ -43,16 +53,17 @@ static void arm(void)
     channel_config_set_dreq(&c, spi_get_dreq(LINK_SPI, false));
     dma_channel_configure(rx_ch, &c, rx_buf, dr, sizeof rx_buf, true);
 
+    // TX runs for a whole frame whatever the reply's length (bytes past it are
+    // ignored), so the TX FIFO never runs dry mid-frame: the PL022's slave
+    // behaviour on underrun is undocumented.
     size_t n;
     const uint8_t *tx = link_tx(link, &n);
-    if (n) {
-        c = dma_channel_get_default_config(tx_ch);
-        channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
-        channel_config_set_read_increment(&c, true);
-        channel_config_set_write_increment(&c, false);
-        channel_config_set_dreq(&c, spi_get_dreq(LINK_SPI, true));
-        dma_channel_configure(tx_ch, &c, dr, tx, n, true);
-    }
+    c = dma_channel_get_default_config(tx_ch);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+    channel_config_set_read_increment(&c, true);
+    channel_config_set_write_increment(&c, false);
+    channel_config_set_dreq(&c, spi_get_dreq(LINK_SPI, true));
+    dma_channel_configure(tx_ch, &c, dr, tx, DDRLINK_FRAME_MAX, true);
     gpio_put(PIN_READY, !shell_busy);
 }
 
@@ -73,6 +84,8 @@ void link_spi_init(link_t *l)
     // the pad's input stays live under the SPI function, so CS can interrupt too
     gpio_set_irq_enabled_with_callback(PIN_SPI_CS, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE,
                                        true, cs_edge);
+    // READY must drop within the shortest frame (16 bytes: ~16 us at 8 MHz)
+    irq_set_priority(IO_IRQ_BANK0, PICO_HIGHEST_IRQ_PRIORITY);
 }
 
 void link_spi_poll(void)
@@ -91,7 +104,10 @@ void link_spi_poll(void)
 
 void link_spi_busy(bool busy)
 {
+    // a frame in flight (or just ended) has READY low already, and arm() will
+    // restore it; check both with the CS interrupt held off
+    uint32_t irq = save_and_disable_interrupts();
     shell_busy = busy;
-    // a frame in flight has READY low already, and arm() will restore it
     if (!frame_done && gpio_get(PIN_SPI_CS)) gpio_put(PIN_READY, !busy);
+    restore_interrupts(irq);
 }

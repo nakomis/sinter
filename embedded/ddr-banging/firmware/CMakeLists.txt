@@ -20,7 +20,7 @@ add_executable(ddr_banging
 )
 target_include_directories(ddr_banging PRIVATE src ../proto)
 target_compile_options(ddr_banging PRIVATE -Wall -Wextra)
-target_link_libraries(ddr_banging pico_stdlib hardware_i2c hardware_gpio hardware_sync
+target_link_libraries(ddr_banging pico_stdlib hardware_i2c hardware_gpio hardware_sync hardware_resets hardware_irq
     hardware_spi hardware_dma)
 
 pico_enable_stdio_usb(ddr_banging 1)
