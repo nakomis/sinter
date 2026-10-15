@@ -20,7 +20,6 @@ k0:
     out x, 16 [4]           ; c1..c5
 k0l:
     jmp x-- k0r             ; c6
-public start:               ; (where the SM starts)
     out pc, 2               ; c7
 k0r:
     jmp k0l [6]             ; c7, c0..c5
@@ -48,3 +47,6 @@ k3l:
 k3r:
     in pins, 10             ; c6
     jmp k3a [2]             ; c7, c0, c1
+public start:               ; once, at start (all three SMs alike):
+    pull block              ;   fill the OSR now, not by autopull
+    out pc, 2               ;   then the first dispatch

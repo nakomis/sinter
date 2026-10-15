@@ -45,10 +45,12 @@ idle_more:
     nop                                 ; c4
     nop                                 ; c5
     jmp x-- idle_rep                    ; c6
-public start:                           ; (where the SM starts: no side-set, so DIR stays off)
     out pc, 2                           ; c7
 idle_rep:
     nop                                 ; c7
     nop                                 ; c0
     nop                                 ; c1
     jmp idle_more                       ; c2
+public start:                           ; once, at start (all three SMs alike), no
+    pull block                          ; side-set so DIR stays off: fill the OSR
+    out pc, 2                           ; now, then the first dispatch

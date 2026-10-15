@@ -78,6 +78,24 @@ fixture's hole size to match before printing the jaws.
    measured, not assumed. Try `tck 250`, then `tck 1000` to put it back.
 5. Run `spd`. Expect `no answer from the SPD at 0x50` (nothing is attached
    yet), with no hang.
+6. Run `selftest`. With nothing attached, this checks the PIO executor on
+   this chip. It runs a test sequence at 1 µs and 250 ns, captures GPIO 0–31
+   on every PIO cycle, and reads the writer's bursts back through the pads.
+   Expect `PASS` for both clocks and `PASS: three SMs in step, PIO2 started
+   from PIO0, 16-bit RX pops all confirmed`. That settles the three
+   silicon unknowns in `EXECUTOR.md` §7 before any wiring exists.
+   - **`no CK in the capture`:** PIO2 didn't start with PIO0's synchronised
+     enable. The PREV mask doesn't wrap as expected; tell Claude, who will
+     switch to an explicit three-block enable.
+   - **Wrong pins:** the first mismatch is printed as CK n, SM cycle c,
+     want/got/mask in hex. Bits 0–7 are DQ, 8–9 DQS/DQS#, 10–11 DIR, 16–17
+     CK/CK# and 18–31 C/A. A whole group off by one SM cycle means a start-up
+     misalignment. Paste the output.
+   - **Loopback wrong, pins right:** the 16-bit RX DMA isn't popping one
+     entry per read. Paste the output.
+
+   Without PIO the bring-up still works (`bus gpio` is the default), so a
+   failure here doesn't block anything until runbook step 10b.
 
 **If something goes wrong:**
 - **No drive appears:** try another cable or port. On A2 silicon, BOOTSEL has

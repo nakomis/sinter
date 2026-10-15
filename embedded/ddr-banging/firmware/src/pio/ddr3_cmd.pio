@@ -10,7 +10,10 @@
 .program ddr3_cmd
 .side_set 2
 
-    nop             side 0b10       ; once, at start: the others' first dispatch
+public start:                       ; once, at start (all three SMs alike):
+    pull block      side 0b10       ;   fill the OSR now, not by autopull, so no
+                                    ;   SM's first OUT stalls
+    nop             side 0b10       ;   while the writer and sampler dispatch
 .wrap_target
 top:
     out pins, 23    side 0b10 [1]   ; q0: CK low, CK# high; C/A for this cycle (autopull at 32)

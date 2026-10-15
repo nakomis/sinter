@@ -1,0 +1,9 @@
+; Self-check capture (SINT-100, see ../pio_check.h): GPIO 0-31 on every SM
+; cycle, into the RX FIFO (autopush 32). PIO2 SM1, beside the sampler,
+; started in the same synchronised enable as the executor's three SMs.
+
+.pio_version 1   ; RP2350
+.program ddr3_cap
+.wrap_target
+    in pins, 32
+.wrap

@@ -3,6 +3,7 @@
 #include <epio.h>
 #include <epio_pioasm.h>
 
+#include "ddr3_cap.pio.h"
 #include "ddr3_cmd.pio.h"
 #include "ddr3_smp.pio.h"
 #include "ddr3_wr.pio.h"
@@ -18,6 +19,8 @@ typedef struct {
     stream_t cmd, wr, smp;
     uint32_t *rx;
     size_t rx_cap, rx_len;
+    uint32_t *cap;
+    size_t cap_cap, cap_len;
 } ctx_t;
 
 static uint8_t feed(epio_t *e, uint8_t block, uint8_t sm, uint32_t *word, void *c)
@@ -32,8 +35,12 @@ static uint8_t feed(epio_t *e, uint8_t block, uint8_t sm, uint32_t *word, void *
 
 static void drain(epio_t *e, uint8_t block, uint8_t sm, uint32_t word, void *c)
 {
-    (void)e, (void)block, (void)sm;
+    (void)e, (void)block;
     ctx_t *x = c;
+    if (sm == 1) {   // the capture: stops when full, as its DMA would
+        if (x->cap_len < x->cap_cap) x->cap[x->cap_len++] = word;
+        return;
+    }
     if (x->rx_len < x->rx_cap) x->rx[x->rx_len] = word;
     x->rx_len++;
 }
@@ -96,10 +103,10 @@ bool pio_sim_run(const pio_sim_streams_t *st, uint32_t tck_ns, size_t total_cycl
     sm_config_set_sideset_pins(&c, PIN_CA_BASE + CA_CK);
     sm_config_set_out_shift(&c, true, true, 32);
     sm_config_set_clkdiv_int_frac8(&c, div, 0);
-    epio_sm_init(e, 0, 0, off, &c);
+    epio_sm_init(e, 0, 0, off + ddr3_cmd_offset_start, &c);
 
     ctx_t x = { { st->cmd, st->n_cmd, 0 }, { st->wr, st->n_wr, 0 }, { st->smp, st->n_smp, 0 },
-                st->rx, st->rx_cap, 0 };
+                st->rx, st->rx_cap, 0, st->capture, st->capture_cap, 0 };
     epio_set_dreq_callbacks(e, 0, 0, feed, NULL, &x);
 
     if (data) {
@@ -126,6 +133,16 @@ bool pio_sim_run(const pio_sim_streams_t *st, uint32_t tck_ns, size_t total_cycl
         sm_config_set_clkdiv_int_frac8(&c, div, 0);
         epio_sm_init(e, 2, 0, off + ddr3_smp_offset_start, &c);
         epio_set_dreq_callbacks(e, 2, 0, feed, drain, &x);
+
+        if (st->capture) {   // PIO2 SM1: the self-check's capture
+            off = epio_add_program(e, 2, &ddr3_cap_program, ddr3_smp_program.length);   // after the sampler
+            c = ddr3_cap_program_get_default_config(off);
+            sm_config_set_in_pins(&c, 0);
+            sm_config_set_in_shift(&c, false, true, 32);
+            sm_config_set_clkdiv_int_frac8(&c, div, 0);
+            epio_sm_init(e, 2, 1, off, &c);
+            epio_set_dreq_callbacks(e, 2, 1, NULL, drain, &x);
+        }
     }
 
     // DMA has the FIFOs topped up before the SMs start
@@ -139,7 +156,7 @@ bool pio_sim_run(const pio_sim_streams_t *st, uint32_t tck_ns, size_t total_cycl
     // PIO0 SM0, and SM0 of PIO1 (next) and PIO2 (prev, wrapping), enabled and
     // their dividers restarted on the same cycle
     uint32_t ctrl = (1u << 0) | (1u << 8);
-    if (data) ctrl |= (1u << 20) | (1u << 16) | (1u << 24) | (1u << 26);
+    if (data) ctrl |= (1u << 20) | ((st->capture ? 3u : 1u) << 16) | (1u << 24) | (1u << 26);
     epio_write_ctrl(e, 0, ctrl);
     for (size_t done = 0; done < total_cycles;) {
         uint32_t n = total_cycles - done > 100000 ? 100000 : (uint32_t)(total_cycles - done);
@@ -151,6 +168,7 @@ bool pio_sim_run(const pio_sim_streams_t *st, uint32_t tck_ns, size_t total_cycl
     out->wr_used = x.wr.next;
     out->smp_used = x.smp.next;
     out->rx_len = x.rx_len;
+    out->capture_len = x.cap_len;
     epio_free(e);
     return true;
 }
