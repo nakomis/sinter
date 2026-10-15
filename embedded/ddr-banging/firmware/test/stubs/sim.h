@@ -17,5 +17,6 @@ extern uint64_t sim_out, sim_oe;
 extern uint64_t (*sim_input)(long t);   // what the DRAM side drives
 
 void sim_reset(void);
+void sim_record(void);   // append a snapshot of sim_out/sim_oe at sim_t
 
 #endif

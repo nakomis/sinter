@@ -296,17 +296,37 @@ int jedec_check_seq(const ddr3_seq_t *seq, bool in_sr)
 
 int jedec_check_pins(uint32_t tck_ns, bool in_sr)
 {
+    return jedec_check_pins_ns(tck_ns / 4.0, tck_ns, in_sr);   // bus_run: a tick per quarter
+}
+
+int jedec_check_pins_ns(double ns_per_tick, double tck_ns, bool in_sr)
+{
     st_t s;
     init(&s, tck_ns, in_sr);
     uint64_t ck = 1ull << (PIN_CA_BASE + CA_CK);
     bool prev = false;
-    double t = 0;
+    double t = 0, last_rise = NEVER, last_fall = NEVER;
     for (size_t i = 0; i < sim_len; i++) {
         bool now = sim_log[i].out & ck;
+        double ti = sim_log[i].t * ns_per_tick;
+        // tCH / tCL: 0.47..0.53 tCK. Only between two edges of a running clock:
+        // a clock stopped in self-refresh may stay low as long as it likes.
         if (now && !prev) {
+            if (last_fall != NEVER && last_rise != NEVER && last_fall > last_rise &&
+                ti - last_rise < 1.5 * tck_ns) {
+                double low = ti - last_fall;
+                if (low < 0.47 * tck_ns - 1e-6 || low > 0.53 * tck_ns + 1e-6)
+                    fail(&s, ti, "tCL: CK low time", low, 0.5 * tck_ns);
+            }
             s.cycle++;
-            t = sim_log[i].t * (tck_ns / 4.0);   // one sim tick per quarter clock
+            t = ti;
             edge(&s, t, (uint32_t)(sim_log[i].out >> PIN_CA_BASE) & ((1u << CA_BITS) - 1));
+            last_rise = ti;
+        } else if (!now && prev) {
+            double high = ti - last_rise;
+            if (last_rise != NEVER && (high < 0.47 * tck_ns - 1e-6 || high > 0.53 * tck_ns + 1e-6))
+                fail(&s, ti, "tCH: CK high time", high, 0.5 * tck_ns);
+            last_fall = ti;
         }
         prev = now;
     }

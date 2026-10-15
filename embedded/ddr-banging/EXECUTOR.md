@@ -6,10 +6,15 @@ holds interrupts off while it runs. The PIO executor plays the **same
 sequences** from two PIO state machines fed by DMA. The sequence builder,
 `dram.c`, the ESP32 link and every host test above the bus stay as they are.
 
-Status (2026-10-15): the word streams and timing maths are written and
-host-tested (`firmware/src/pio_enc.c`). The PIO programs below are drafts.
-They get written and tested once the host PIO emulator (nakomis/epio, a fork
-of piersfinlayson/epio) is tagged. The pio-emulator session will say when.
+Status (2026-10-15):
+- **Done:** the word streams and timing maths (`firmware/src/pio_enc.c`).
+- **Done:** the **command SM**, `firmware/src/pio/ddr3_cmd.pio`, runs under
+  epio (nakomis/epio `v0.2.2-nakomis.1`, a submodule). For init and run
+  batches at 250 ns, 1 µs and 3.4 µs, the DRAM sees exactly the sequence's
+  C/A on every CK rising edge. There is one edge per cycle, evenly spaced,
+  and the duty cycle is exactly 50%. The pin trace passes the JEDEC checker,
+  which now also checks tCH/tCL. A deliberately broken CK phase is caught.
+- **Next:** the data SM (§5), then `bus_pio.c` on the firmware side.
 
 ## 1. The spec: bus_run's pin trace
 
@@ -90,7 +95,7 @@ divider's jitter, and epio's MVP models integer only.
 ## 5. Draft programs (to be written against epio)
 
 **cmd** (1 instruction per quarter; side-set bit 0 = CK on GPIO 16, bit 1 =
-CK# on 17):
+CK# on 17). This is the version in `src/pio/ddr3_cmd.pio`, tested:
 
 ```
 .program ddr_cmd

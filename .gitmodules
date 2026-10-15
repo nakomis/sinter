@@ -1,0 +1,6 @@
+[submodule "embedded/ddr-banging/firmware/test/third_party/epio"]
+	path = embedded/ddr-banging/firmware/test/third_party/epio
+	url = https://github.com/nakomis/epio.git
+[submodule "embedded/ddr-banging/firmware/test/third_party/apio"]
+	path = embedded/ddr-banging/firmware/test/third_party/apio
+	url = https://github.com/piersfinlayson/apio.git

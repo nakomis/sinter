@@ -22,6 +22,9 @@
 // self-refresh (a command sequence) rather than powered up and uninitialised.
 int jedec_check_seq(const ddr3_seq_t *s, bool in_sr);
 int jedec_check_pins(uint32_t tck_ns, bool in_sr);
+// The same, for pins recorded at another time base (the PIO emulator: one
+// tick per system clock).
+int jedec_check_pins_ns(double ns_per_tick, double tck_ns, bool in_sr);
 
 // Check against the above-85 C refresh rate (tREFI 3.9 us) from now on.
 void jedec_set_hot(bool hot);
