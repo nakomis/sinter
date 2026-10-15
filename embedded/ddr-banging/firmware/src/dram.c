@@ -1,5 +1,7 @@
 #include "dram.h"
 
+#include "bus.h"
+
 #include "pico/time.h"
 
 #include "ddr3.h"
@@ -17,6 +19,10 @@ static bool initialised;
 static const char *error;
 static bool (*thermometer)(int *t16);
 static bool extended_temp, hot;
+static const bus_ops_t *bus = &bus_gpio_ops;
+
+void dram_set_bus(const bus_ops_t *ops) { bus = ops; }
+const bus_ops_t *dram_bus(void) { return bus; }
 
 void dram_set_thermometer(bool (*read16)(int *t16))
 {
@@ -44,8 +50,8 @@ static bool thermal_ok(void)
         error = "module at 80 C or more, and its SPD doesn't claim the extended range";
         return false;
     }
-    if (bus_tck() > DDR3_TCK_MAX_HOT_NS) bus_set_tck(DDR3_TCK_MAX_HOT_NS);
-    if (bus_tck() > DDR3_TCK_MAX_HOT_NS) {
+    if (bus->tck() > DDR3_TCK_MAX_HOT_NS) bus->set_tck(DDR3_TCK_MAX_HOT_NS);
+    if (bus->tck() > DDR3_TCK_MAX_HOT_NS) {
         error = "hot, and the clock can't be brought within the 2x refresh limit";
         return false;
     }
@@ -64,7 +70,7 @@ const bus_sample_t *dram_samples(unsigned *n)
 
 static void seq_start(ddr3_seq_t *s)
 {
-    ddr3_seq_init(s, seq_buf, SEQ_CAP, bus_tck());
+    ddr3_seq_init(s, seq_buf, SEQ_CAP, bus->tck());
     ddr3_seq_set_hot(s, hot);
     s->cke = initialised;
 }
@@ -75,7 +81,10 @@ static bool run(ddr3_seq_t *s)
         error = "sequence too long for the buffer";
         return false;
     }
-    bus_run(s, samples, sizeof samples / sizeof samples[0]);
+    if (!bus->run(s, samples, sizeof samples / sizeof samples[0])) {
+        error = "the bus executor couldn't play the sequence";
+        return false;
+    }
     n_samples = 0;
     for (size_t i = 0; i < s->len; i++) n_samples += (s->cycles[i].flags & CY_SAMPLE) != 0;
     error = NULL;

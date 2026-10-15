@@ -16,12 +16,17 @@ add_executable(ddr_banging
     src/dram.c
     src/link.c
     src/link_spi.c
+    src/bus_pio.c
+    src/pio_enc.c
     ../proto/ddrlink.c
 )
 target_include_directories(ddr_banging PRIVATE src ../proto)
 target_compile_options(ddr_banging PRIVATE -Wall -Wextra)
 target_link_libraries(ddr_banging pico_stdlib hardware_i2c hardware_gpio hardware_sync hardware_resets hardware_irq
-    hardware_spi hardware_dma)
+    hardware_spi hardware_dma hardware_pio hardware_clocks)
+foreach(prog ddr3_cmd ddr3_wr ddr3_smp)
+    pico_generate_pio_header(ddr_banging ${CMAKE_CURRENT_LIST_DIR}/src/pio/${prog}.pio)
+endforeach()
 
 pico_enable_stdio_usb(ddr_banging 1)
 pico_enable_stdio_uart(ddr_banging 0)

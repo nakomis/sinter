@@ -57,8 +57,9 @@ static void on_cycle(epio_t *e, uint64_t cycle, uint64_t out, uint64_t oe, uint6
 
 bool pio_sim_timing(uint32_t tck_ns, pioenc_timing_t *t)
 {
-    // each quarter is one instruction of two SM cycles (or two of one)
-    return pioenc_timing(tck_ns, PIO_SIM_SYSCLK_HZ, 2, 0, t);
+    // the firmware's rule (bus_pio.c): round down to a whole divider
+    pioenc_executor_timing(tck_ns, PIO_SIM_SYSCLK_HZ, t);
+    return true;
 }
 
 static void own(epio_t *e, uint8_t block, uint8_t first, uint8_t last, bool output)

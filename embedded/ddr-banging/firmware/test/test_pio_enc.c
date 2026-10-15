@@ -138,6 +138,15 @@ static void test_timing(void)
     // 250 ns works; 8 ns (the DLL-off minimum) is beyond a 4-quarter PIO loop
     CHECK(pioenc_timing(250, 150000000, 1, 7, &t));
     CHECK(!pioenc_timing(8, 150000000, 1, 7, &t));
+    // the executor's rule rounds down, never slower than asked
+    pioenc_executor_timing(1000, 150000000, &t);
+    CHECK_EQ(t.div, 18);
+    CHECK_EQ(t.tck_ps, 960000);
+    pioenc_executor_timing(3400, 150000000, &t);
+    CHECK(t.tck_ps <= 3400000);
+    pioenc_executor_timing(10, 150000000, &t);   // below div 1: div 1
+    CHECK_EQ(t.div, 1);
+    CHECK_EQ(t.tck_ps, 53333);
 }
 
 void test_pio_enc(void)
