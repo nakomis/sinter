@@ -273,6 +273,61 @@ static void test_self_refresh_entry_converges_when_slow(void)
     CHECK(refs >= 9);
 }
 
+static void test_row_bursts_by_clock(void)
+{
+    ddr3_seq_t s;
+    ddr3_seq_init(&s, buf, 4096, 1000);
+    CHECK_EQ(ddr3_seq_row_bursts(&s), 10);   // 7 CK tREFI: ACT to REF within 8 tREFI
+    ddr3_seq_init(&s, buf, 4096, 250);
+    CHECK_EQ(ddr3_seq_row_bursts(&s), 58);
+    ddr3_seq_init(&s, buf, 4096, 3400);
+    CHECK_EQ(ddr3_seq_row_bursts(&s), 1);
+}
+
+// A run's commands every tCCD, data seamless, one ACT and one PRE
+static void test_write_run_layout(void)
+{
+    ddr3_seq_t s;
+    ddr3_seq_init(&s, buf, 4096, 1000);
+    s.cke = true;
+    uint8_t d[40];
+    for (int i = 0; i < 40; i++) d[i] = (uint8_t)(0x10 + i);
+    ddr3_seq_write_run(&s, 0x400, d, 5);
+    CHECK_EQ(count(&s, DDR3_ACT), 1);
+    CHECK_EQ(count(&s, DDR3_WR), 5);
+    long w0 = find(&s, DDR3_WR, 0);
+    for (int j = 1; j < 5; j++) CHECK_EQ(find(&s, DDR3_WR, (size_t)w0 + 1 + 4 * (j - 1)), w0 + 4 * j);
+    for (int j = 0; j < 5; j++)
+        for (int k = 0; k < 4; k++) {
+            const ddr3_cycle_t *c = &s.cycles[w0 + 4 * j + DDR3_CWL + k];
+            CHECK_EQ(c->flags, CY_DRIVE | CY_STROBE);
+            CHECK_EQ(c->dq[0], 0x10 + 8 * j + 2 * k);
+            CHECK_EQ(c->dq[1], 0x11 + 8 * j + 2 * k);
+        }
+    CHECK_EQ(s.cycles[w0 + DDR3_CWL - 1].flags, CY_DRIVE);         // preamble
+    CHECK_EQ(s.cycles[w0 + 16 + DDR3_CWL + 4].flags, CY_DRIVE);    // postamble
+}
+
+// dram.c finds burst j of a read run at sampled cycle 1 + 4j of the window
+static void test_read_run_window(void)
+{
+    ddr3_seq_t s;
+    ddr3_seq_init(&s, buf, 4096, 1000);
+    s.cke = true;
+    ddr3_seq_read_run(&s, 0x800, 6);
+    long first = (long)ddr3_seq_last_read_start(&s);
+    long r0 = find(&s, DDR3_RD, 0);
+    for (int j = 0; j < 6; j++) {
+        long rj = find(&s, DDR3_RD, j ? (size_t)r0 + 4 * (j - 1) + 1 : 0);
+        CHECK_EQ(rj, r0 + 4 * j);
+        CHECK_EQ(first + DDR3_READ_WINDOW_BEFORE + 4 * j, rj + DDR3_RL_DLL_OFF);
+    }
+    unsigned sampled = 0;
+    for (size_t i = 0; i < s.len; i++) sampled += (s.cycles[i].flags & CY_SAMPLE) != 0;
+    CHECK_EQ(sampled, ddr3_read_run_samples(6));
+    CHECK_EQ(ddr3_read_run_samples(1), DDR3_READ_WINDOW_CYCLES);
+}
+
 static void test_init_mrs(void)
 {
     ddr3_seq_t s;
@@ -429,6 +484,9 @@ void test_ddr3(void)
     RUN(test_command_session_stays_within_8_postponed);
     RUN(test_batched_bursts_keep_refresh_pace);
     RUN(test_self_refresh_entry_converges_when_slow);
+    RUN(test_row_bursts_by_clock);
+    RUN(test_write_run_layout);
+    RUN(test_read_run_window);
     RUN(test_init_mrs);
     RUN(test_write_burst);
     RUN(test_read_burst);

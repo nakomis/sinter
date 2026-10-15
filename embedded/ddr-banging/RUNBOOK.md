@@ -407,7 +407,7 @@ Take a photo.*
    idf.py set-target esp32s3 build flash monitor
    ```
 3. Expect `RP2350 link v1: 128 MB, tCK 1000 ns`, then the init, then progress
-   lines every 4 MB at a few hundred KB/s. A full pass takes about 6 minutes
+   lines every 4 MB at up to about 1 MB/s. A full pass takes a few minutes
    each way.
 4. At the end, expect `PASSED: 0 bad words in 128 MB`. In the RP2350 shell,
    `link` shows the same frame and error counts.

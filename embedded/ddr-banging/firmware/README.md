@@ -29,7 +29,7 @@ make flash   # picotool load (hold BOOTSEL while plugging in the first time)
 | `src/link.c` | ESP32 link, slave side: acts on complete frames of `../proto/ddrlink.h`. Pure logic. |
 | `src/link_spi.c` | The link's transport: SPI1 as a mode-3 slave, DMA both ways, CS interrupts, READY. |
 | `src/main.c` | The shell, and the link's memory backend. |
-| `test/` | Host tests (`make test`). `test/jedec.c` is an independent JEDEC timing checker: every sequence the firmware builds, at every clock it allows, read back off the simulated pins. |
+| `test/` | Host tests (`make test`). `test/jedec.c` is an independent JEDEC timing checker: every sequence the firmware builds, at every clock it allows, read back off the simulated pins. `test/dram_model.c` is a behavioural DRAM on the same pins: it stores writes at their DQS edges and drives reads at RL, so `dram_write`/`dram_read` are tested byte for byte. |
 
 A sequence is a list of CK cycles, each with a command/address word and data
 flags (drive, strobe, sample). The executor is deliberately dumb so a PIO
@@ -101,7 +101,17 @@ Both sides are 3.3 V: wire them directly, with a common GND. SPI mode 3, at up
 to ~12 MHz (the RP2350 slave needs clk_peri ≥ 12 × SCK).
 
 Reads and writes share one self-refresh exit between up to 256 bursts (2 KB),
-paying the REFs owed after every burst. That's about 380 KB/s at 1 MHz, so
-128 MB takes about 6 minutes each way, plus the SPI time. Each burst still
-opens and closes its own row; keeping a row open for several bursts (within
-tRAS max) is milestone 11.
+in runs of consecutive bursts per open row: one ACT and one PRE per run, a
+column command every 4 CK, data seamless. No REF can go in while a row is
+open, so a run is as long as JEDEC's 8 postponed REFs allow
+(`ddr3_seq_row_bursts`): 10 bursts at 1 MHz, 58 at 250 ns, 1 at 3.4 µs.
+
+| tCK | Write | Read |
+|---|---|---|
+| 250 ns | 4.8 MB/s | 4.8 MB/s |
+| 1 µs (default) | 940 KB/s | 970 KB/s |
+| 2 µs | 220 KB/s | 240 KB/s |
+| 3.4 µs | 60 KB/s | 67 KB/s |
+
+Memory side only; the SPI link at 8 MHz carries about 1 MB/s. At 1 MHz the
+128 MB test takes a few minutes each way.

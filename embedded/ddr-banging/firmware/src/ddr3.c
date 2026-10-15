@@ -166,43 +166,103 @@ static void close_row(ddr3_seq_t *s, ddr3_addr_t x)
     ddr3_seq_idle(s, ddr3_ck(s, TRP_NS, 1));
 }
 
-void ddr3_seq_write(ddr3_seq_t *s, uint32_t byte_addr, const uint8_t data[8])
+#define TCCD 4   // CK between column commands; = BL8 / 2, so data is seamless
+
+// Append n NOPs and return the first, for laying out overlapping commands
+// and data by position. NULL on overflow.
+static ddr3_cycle_t *span(ddr3_seq_t *s, uint32_t n)
+{
+    size_t at = s->len;
+    nops(s, n);
+    return s->overflow ? NULL : &s->cycles[at];
+}
+
+static void put_cmd(ddr3_seq_t *s, ddr3_cycle_t *c, ddr3_cmd_t cmd, unsigned ba, unsigned addr)
+{
+    c->ca = ddr3_encode(cmd, ba, addr, s->cke);
+}
+
+static uint32_t twr_ck(const ddr3_seq_t *s)
+{
+    return ddr3_ck(s, TWR_NS, 4);   // DLL off: the greater of 4 CK and 15 ns (Micron)
+}
+
+unsigned ddr3_seq_row_bursts(const ddr3_seq_t *s)
+{
+    // ACT .. last WR = tRCD + 4(n-1); then WL, 4 data, postamble, tWR, PRE,
+    // tRP, REF. One CK spare for where the REF schedule's phase falls.
+    long fixed = (long)ddr3_ck(s, TRCD_NS, 1) + DDR3_CWL + 5 + (long)twr_ck(s) - 1
+               + 1 + (long)ddr3_ck(s, TRP_NS, 1) + 1;
+    long room = 8L * (long)s->ref_interval - 1 - fixed;
+    long n = room < 0 ? 1 : room / TCCD + 1;
+    long row = 1L << (DDR3_COL_BITS - 3);
+    return (unsigned)(n > row ? row : n);
+}
+
+// A run stops at the end of its row: a column past 1023 would spill into A10
+// (auto-precharge).
+static unsigned clamp_to_row(ddr3_addr_t x, unsigned n)
+{
+    unsigned left = ((1u << DDR3_COL_BITS) - x.col) / 8;
+    return n < left ? n : left;
+}
+
+unsigned ddr3_seq_write_run(ddr3_seq_t *s, uint32_t byte_addr, const uint8_t *data, unsigned n)
 {
     ddr3_addr_t x = ddr3_split(byte_addr & ~7u);
+    n = clamp_to_row(x, n);
     open_row(s, x);
-    ddr3_seq_cmd(s, DDR3_WR, x.bank, x.col);
-    nops(s, DDR3_CWL - 2);
-    ddr3_cycle_t *c = push(s, ddr3_encode(DDR3_NOP, 0, 0, s->cke));
-    if (c) c->flags = CY_DRIVE;                 // preamble: DQS driven low
-    for (int k = 0; k < 4; k++) {
-        c = push(s, ddr3_encode(DDR3_NOP, 0, 0, s->cke));
-        if (!c) return;
-        c->flags = CY_DRIVE | CY_STROBE;
-        c->dq[0] = data[2 * k];
-        c->dq[1] = data[2 * k + 1];
-    }
-    c = push(s, ddr3_encode(DDR3_NOP, 0, 0, s->cke));
-    if (c) c->flags = CY_DRIVE;                 // postamble
-    nops(s, ddr3_ck(s, TWR_NS, 4) - 1);         // tWR
+    // WR j at 4j; data for WR j at 4j + WL .. +3, preamble before the first,
+    // postamble after the last
+    uint32_t len = TCCD * (n - 1) + DDR3_CWL + 5;
+    ddr3_cycle_t *c = span(s, len);
+    if (!c) return n;
+    for (unsigned j = 0; j < n; j++) put_cmd(s, &c[TCCD * j], DDR3_WR, x.bank, x.col + 8 * j);
+    c[DDR3_CWL - 1].flags = CY_DRIVE;
+    for (unsigned j = 0; j < n; j++)
+        for (int k = 0; k < 4; k++) {
+            ddr3_cycle_t *d = &c[TCCD * j + DDR3_CWL + k];
+            d->flags = CY_DRIVE | CY_STROBE;
+            d->dq[0] = data[8 * j + 2 * k];
+            d->dq[1] = data[8 * j + 2 * k + 1];
+        }
+    c[len - 1].flags = CY_DRIVE;
+    nops(s, twr_ck(s) - 1);                  // tWR
     close_row(s, x);
+    return n;
+}
+
+unsigned ddr3_read_run_samples(unsigned n)
+{
+    return DDR3_READ_WINDOW_CYCLES + TCCD * (n - 1);
+}
+
+unsigned ddr3_seq_read_run(ddr3_seq_t *s, uint32_t byte_addr, unsigned n)
+{
+    ddr3_addr_t x = ddr3_split(byte_addr & ~7u);
+    n = clamp_to_row(x, n);
+    open_row(s, x);
+    uint32_t w0 = DDR3_RL_DLL_OFF - DDR3_READ_WINDOW_BEFORE;   // first sampled cycle
+    uint32_t ns = ddr3_read_run_samples(n);
+    // the window ends past tRTP (4 CK) and tRAS; one more cycle carries the
+    // last falling-edge sample point before the PRE
+    ddr3_cycle_t *c = span(s, w0 + ns + 1);
+    if (!c) return n;
+    for (unsigned j = 0; j < n; j++) put_cmd(s, &c[TCCD * j], DDR3_RD, x.bank, x.col + 8 * j);
+    for (uint32_t k = 0; k < ns; k++) c[w0 + k].flags = CY_SAMPLE;
+    s->last_read = (size_t)(c - s->cycles) + w0;
+    close_row(s, x);
+    return n;
+}
+
+void ddr3_seq_write(ddr3_seq_t *s, uint32_t byte_addr, const uint8_t data[8])
+{
+    ddr3_seq_write_run(s, byte_addr, data, 1);
 }
 
 void ddr3_seq_read(ddr3_seq_t *s, uint32_t byte_addr)
 {
-    ddr3_addr_t x = ddr3_split(byte_addr & ~7u);
-    open_row(s, x);
-    ddr3_seq_cmd(s, DDR3_RD, x.bank, x.col);
-    nops(s, DDR3_RL_DLL_OFF - DDR3_READ_WINDOW_BEFORE - 1);
-    s->last_read = s->len;
-    for (int k = 0; k < DDR3_READ_WINDOW_CYCLES; k++) {
-        ddr3_cycle_t *c = push(s, ddr3_encode(DDR3_NOP, 0, 0, s->cke));
-        if (!c) return;
-        c->flags = CY_SAMPLE;
-    }
-    // the window ends past tRTP (4 CK) and tRAS; one more cycle carries the
-    // last falling-edge sample point before the PRE
-    nops(s, 1);
-    close_row(s, x);
+    ddr3_seq_read_run(s, byte_addr, 1);
 }
 
 size_t ddr3_seq_last_read_start(const ddr3_seq_t *s)
