@@ -38,7 +38,9 @@ _TABLE = {
     "LDO33": ("AMS1117-3.3", "C6186", "SOT-223-3_L6.5-W3.4-P2.30-LS7.0-BR", "AMS1117-3.3", False, 0),
     "BUCK": ("TPS563201DDCR", "C116592", "SOT-23-6_L2.9-W1.6-P0.95-LS2.8-BR", "TPS563201DDCR", True, 0),
     "L_BUCK": ("2.2uH", "C408345", "IND-SMD_L5.4-W5.2", "MWSA0518S-2R2MT", True, 0),
-    "L_CORE": ("3.3uH", "C42411119", "IND-SMD_L2.0-W1.6_AOTA-B201610S3R3-101-T", "AOTA-B201610S3R3-101-T", True, 0),
+    # L_CORE was Abracon AOTA-B201610S3R3-101-T (C42411119, the Pico 2 part): JLCPCB cancelled
+    # the pre-order in Oct 2026, supplier out of stock. Same size and type, molded 2016.
+    "L_CORE": ("3.3uH", "C5832345", "IND-SMD_L2.0-W1.6-B", "FTC201610S3R3MBCA", True, 0),
     "XTAL12": ("12MHz", "C9002", "CRYSTAL-SMD_4P-L3.2-W2.5-BL", "X322512MSB4SI", False, 0),
     "USBC": ("TYPE-C-31-M-12", "C165948", "USB-C_SMD-TYPE-C-31-M-12_1", "TYPE-C-31-M-12", True, 0),
     "SW": ("TS-1187A-B-A-B", "C318884", "SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5", "TS-1187A-B-A-B", False, 0),

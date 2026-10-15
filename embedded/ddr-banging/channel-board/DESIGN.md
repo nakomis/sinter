@@ -58,7 +58,7 @@ small. Decision after pricing; everything below describes option 2.
 |---|---|---|
 | 5 V | USB-C, CC1/CC2 5.1 kΩ to GND (sink, up to 3 A from a capable charger) | regulators, ESP32 header |
 | 3.3 V | LDO, ≥ 500 mA | RP2354B IOVDD, translator VCCA, decoder, expander, SPD (VDDSPD) |
-| 1.1 V | RP2354B internal SMPS + 3.3 µH inductor (Pico 2 reference) | RP2354B core |
+| 1.1 V | RP2354B internal SMPS + 3.3 µH inductor (cjiang FTC201610S3R3MBCA, C5832345; the Pico 2 reference AOTA-B201610S3R3-101-T was out of stock) | RP2354B core |
 | 1.5 V | Synchronous buck, 3 A, 5 V in | DIMM VDD/VDDQ, translator VCCB, VTT regulator input |
 | VTT 0.75 V | TPS51200, EN from expander | DIMM VTT pins (stock termination) |
 | VREF 0.75 V | TPS51200 REFOUT | VREFCA, VREFDQ. Fallback: 1k/1k divider + 100 nF, DNP |
