@@ -9,7 +9,7 @@ sequences** from two PIO state machines fed by DMA. The sequence builder,
 Status (2026-10-15):
 - **Done:** the word streams and timing maths (`firmware/src/pio_enc.c`).
 - **Done:** the **command SM**, `firmware/src/pio/ddr3_cmd.pio`, runs under
-  epio (nakomis/epio `v0.2.2-nakomis.1`, a submodule). For init and run
+  epio (nakomis/epio `v0.2.2-nakomis.2`, a submodule). For init and run
   batches at 250 ns, 1 µs and 3.4 µs, the DRAM sees exactly the sequence's
   C/A on every CK rising edge. There is one edge per cycle, evenly spaced,
   and the duty cycle is exactly 50%. The pin trace passes the JEDEC checker,

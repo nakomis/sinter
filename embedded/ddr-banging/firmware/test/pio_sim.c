@@ -50,11 +50,10 @@ bool pio_sim_run_cmd(const uint32_t *cmd, size_t words, uint32_t tck_ns, size_t 
     }
     uint off = epio_add_program(e, 0, &ddr3_cmd_program, 0);
     pio_sm_config c = ddr3_cmd_program_get_default_config(off);
-    // Pins relative to GPIOBASE (16). pico-sdk takes absolute numbers and
-    // subtracts the base itself; epio v0.2.2-nakomis.1's shim keeps pin & 31,
-    // so absolute 18 would land on GPIO 34. Reported to the epio session.
-    sm_config_set_out_pins(&c, PIN_CA_BASE + CA_CKE - 16, PIOENC_CA_BITS);
-    sm_config_set_sideset_pins(&c, PIN_CA_BASE + CA_CK - 16);
+    // absolute GPIOs, as with the pico-sdk: epio moves them into the
+    // GPIOBASE 16 window (fixed in v0.2.2-nakomis.2, PIOE-12)
+    sm_config_set_out_pins(&c, PIN_CA_BASE + CA_CKE, PIOENC_CA_BITS);
+    sm_config_set_sideset_pins(&c, PIN_CA_BASE + CA_CK);
     sm_config_set_out_shift(&c, true, true, 32);
     sm_config_set_clkdiv_int_frac8(&c, out->timing.div, 0);
     epio_sm_init(e, 0, 0, off, &c);
