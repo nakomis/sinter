@@ -1,22 +1,24 @@
 ; DDR3 command/address state machine (SINT-100, see ../../../EXECUTOR.md).
 ;
-; One word per run of identical CK cycles (pio_enc.c): [22:0] C/A for the 23
-; OUT pins (GPIO 18..40: CKE .. A13), [31:23] how many more cycles repeat it.
-; Side-set drives CK (bit 0, GPIO 16) and CK# (bit 1, GPIO 17). Every CK
-; cycle is exactly four instructions on every path, so the data SM can run
-; the same count in lock-step.
+; PIO0, GPIOBASE 16. One word per run of identical CK cycles (pio_enc.c):
+; [22:0] C/A for the 23 OUT pins (GPIO 18..40: CKE .. A13), [31:23] how many
+; more cycles repeat it. Side-set drives CK (bit 0, GPIO 16) and CK# (bit 1,
+; GPIO 17). Every CK cycle is 8 SM cycles on every path (four instructions of
+; two cycles), in step with the writer (PIO1) and sampler (PIO2).
 
+.pio_version 1   ; RP2350
 .program ddr3_cmd
 .side_set 2
 
+    nop             side 0b10       ; once, at start: the others' first dispatch
 .wrap_target
 top:
-    out pins, 23    side 0b10   ; q0: CK low, CK# high; C/A for this cycle (autopull at 32)
-    out x, 9        side 0b10   ; q1: repeats
+    out pins, 23    side 0b10 [1]   ; q0: CK low, CK# high; C/A for this cycle (autopull at 32)
+    out x, 9        side 0b10 [1]   ; q1: repeats
 loop:
-    nop             side 0b01   ; q2: CK rises: the DRAM registers C/A
-    jmp x-- rep     side 0b01   ; q3: another cycle of the same?
-.wrap                           ;     no: the next word
+    nop             side 0b01 [1]   ; q2: CK rises: the DRAM registers C/A
+    jmp x-- rep     side 0b01 [1]   ; q3: another cycle of the same?
+.wrap                               ;     no: the next word
 rep:
-    nop             side 0b10   ; q0: CK low, the same C/A still on the pins
-    jmp loop        side 0b10   ; q1
+    nop             side 0b10 [1]   ; q0: CK low, the same C/A still on the pins
+    jmp loop        side 0b10 [1]   ; q1

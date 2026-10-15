@@ -6,65 +6,110 @@ ddr3_cycle_t pioenc_normalise(ddr3_cycle_t c)
 {
     c.ca &= ~((1u << CA_CK) | (1u << CA_CKN));
     c.flags &= CY_DRIVE | CY_STROBE | CY_SAMPLE;
-    if (!(c.flags & CY_DRIVE)) c.dq[0] = c.dq[1] = 0;
+    if (!(c.flags & CY_DRIVE)) {
+        c.flags &= ~CY_STROBE;
+        c.dq[0] = c.dq[1] = 0;
+    }
     return c;
 }
 
-static bool same(ddr3_cycle_t a, ddr3_cycle_t b)
+// Each stream's view of cycle i, as the word it would need (repeats aside)
+static uint32_t cmd_word(const ddr3_cycle_t *c, size_t i)
 {
-    return a.ca == b.ca && a.flags == b.flags && a.dq[0] == b.dq[0] && a.dq[1] == b.dq[1];
+    return (pioenc_normalise(c[i]).ca >> CA_CKE) & CA_PIN_MASK;
 }
 
-// Cycle i as encoded: normalised, plus whether cycle i-1 sampled
-static ddr3_cycle_t at(const ddr3_cycle_t *c, size_t i)
+static uint32_t writer_word(const ddr3_cycle_t *c, size_t i)
 {
     ddr3_cycle_t x = pioenc_normalise(c[i]);
-    if (i && (c[i - 1].flags & CY_SAMPLE)) x.flags |= PIOENC_PREV_SAMPLE;
-    return x;
+    if (!(x.flags & CY_DRIVE)) return PIOENC_WR_IDLE;
+    uint32_t kind = (x.flags & CY_STROBE) ? PIOENC_WR_STROBE : PIOENC_WR_DRIVE;
+    return kind | (uint32_t)x.dq[0] << 2 | (uint32_t)x.dq[1] << 10;
 }
 
-size_t pioenc_encode(const ddr3_cycle_t *c, size_t n, uint32_t *cmd, uint32_t *data,
-                     size_t cap, bool *overflow)
+static uint32_t sampler_word(const ddr3_cycle_t *c, size_t i)
+{
+    uint32_t w = (c[i].flags & CY_SAMPLE) ? PIOENC_SMP_BEAT0 : 0;
+    if (i && (c[i - 1].flags & CY_SAMPLE)) w |= PIOENC_SMP_BEAT1;
+    return w;
+}
+
+// Run-length encode one view: a run of equal words becomes the word plus a
+// repeat count at rep_shift (max rep_max); can_repeat says whether a word may
+// carry one at all (drive words use those bits for data).
+static size_t encode(const ddr3_cycle_t *c, size_t n, uint32_t (*view)(const ddr3_cycle_t *, size_t),
+                     bool (*can_repeat)(uint32_t), unsigned rep_shift, uint32_t rep_max,
+                     uint32_t *out, size_t cap, bool *overflow)
 {
     size_t w = 0;
     *overflow = false;
     for (size_t i = 0; i < n;) {
-        ddr3_cycle_t x = at(c, i);
-        uint32_t rep = 0;
-        while (i + 1 + rep < n && rep < PIOENC_REP_MAX && same(x, at(c, i + 1 + rep)))
-            rep++;
+        uint32_t x = view(c, i), rep = 0;
+        if (can_repeat(x))
+            while (i + 1 + rep < n && rep < rep_max && view(c, i + 1 + rep) == x) rep++;
         if (w == cap) {
             *overflow = true;
             return w;
         }
-        cmd[w] = (x.ca >> CA_CKE) & CA_PIN_MASK;
-        data[w] = (uint32_t)x.flags | (uint32_t)x.dq[0] << 4 | (uint32_t)x.dq[1] << 12;
-        cmd[w] |= rep << PIOENC_REP_SHIFT;
-        data[w] |= rep << PIOENC_REP_SHIFT;
-        w++;
+        out[w++] = x | rep << rep_shift;
         i += 1 + rep;
     }
     return w;
 }
 
-size_t pioenc_decode(const uint32_t *cmd, const uint32_t *data, size_t words,
-                     ddr3_cycle_t *out, size_t cap)
+static bool always(uint32_t w) { (void)w; return true; }
+static bool idle_only(uint32_t w) { return (w & 3u) == PIOENC_WR_IDLE; }
+
+size_t pioenc_cmd(const ddr3_cycle_t *c, size_t n, uint32_t *out, size_t cap, bool *overflow)
+{
+    return encode(c, n, cmd_word, always, PIOENC_REP_SHIFT, PIOENC_REP_MAX, out, cap, overflow);
+}
+
+size_t pioenc_writer(const ddr3_cycle_t *c, size_t n, uint32_t *out, size_t cap, bool *overflow)
+{
+    return encode(c, n, writer_word, idle_only, 2, PIOENC_REP16_MAX, out, cap, overflow);
+}
+
+size_t pioenc_sampler(const ddr3_cycle_t *c, size_t n, uint32_t *out, size_t cap, bool *overflow)
+{
+    return encode(c, n, sampler_word, always, 2, PIOENC_REP16_MAX, out, cap, overflow);
+}
+
+size_t pioenc_decode(const uint32_t *cmd, size_t n_cmd, const uint32_t *wr, size_t n_wr,
+                     const uint32_t *smp, size_t n_smp, ddr3_cycle_t *out, size_t cap)
 {
     size_t n = 0;
-    for (size_t w = 0; w < words; w++) {
-        uint32_t rep = cmd[w] >> PIOENC_REP_SHIFT;
-        if (rep != data[w] >> PIOENC_REP_SHIFT) return 0;   // the SMs would drift apart
-        ddr3_cycle_t c = {
-            .ca = (cmd[w] & CA_PIN_MASK) << CA_CKE,
-            .flags = (uint8_t)(data[w] & 7u),   // PREV_SAMPLE is derived; dropped
-            .dq = { (uint8_t)(data[w] >> 4), (uint8_t)(data[w] >> 12) },
-        };
-        for (uint32_t k = 0; k <= rep; k++) {
+    for (size_t w = 0; w < n_cmd; w++)
+        for (uint32_t k = 0; k <= cmd[w] >> PIOENC_REP_SHIFT; k++) {
             if (n == cap) return 0;
-            out[n++] = c;
+            out[n++] = (ddr3_cycle_t){ .ca = (cmd[w] & CA_PIN_MASK) << CA_CKE };
+        }
+    size_t m = 0;
+    for (size_t w = 0; w < n_wr; w++) {
+        uint32_t kind = wr[w] & 3u;
+        if (kind == 3u) return 0;
+        uint32_t rep = kind == PIOENC_WR_IDLE ? (wr[w] >> 2) & 0xFFFFu : 0;
+        for (uint32_t k = 0; k <= rep; k++, m++) {
+            if (m >= n) return 0;
+            if (kind != PIOENC_WR_IDLE) {
+                out[m].flags |= CY_DRIVE | (kind == PIOENC_WR_STROBE ? CY_STROBE : 0);
+                out[m].dq[0] = (uint8_t)(wr[w] >> 2);
+                out[m].dq[1] = (uint8_t)(wr[w] >> 10);
+            }
         }
     }
-    return n;
+    if (m != n) return 0;
+    m = 0;
+    bool prev = false;
+    for (size_t w = 0; w < n_smp; w++)
+        for (uint32_t k = 0; k <= ((smp[w] >> 2) & 0xFFFFu); k++, m++) {
+            if (m >= n) return 0;
+            bool b1 = smp[w] & PIOENC_SMP_BEAT1;
+            if (b1 != prev) return 0;   // BEAT1 must follow a sampled cycle exactly
+            if (smp[w] & PIOENC_SMP_BEAT0) out[m].flags |= CY_SAMPLE;
+            prev = smp[w] & PIOENC_SMP_BEAT0;
+        }
+    return m == n ? n : 0;
 }
 
 bool pioenc_timing(uint32_t tck_ns, uint32_t sysclk_hz, unsigned instr, unsigned max_delay,

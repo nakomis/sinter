@@ -1,0 +1,50 @@
+; DDR3 read-sampling state machine (SINT-100, see ../../../EXECUTOR.md).
+;
+; PIO2, GPIOBASE 0, loaded at 0 (out pc dispatches to absolute addresses).
+; IN pins 0..9 (DQ0-7, DQS, DQS#), shift left, autopush at 10: one RX word
+; per sample, beats in the order bus_run stores them.
+;
+; One 18-bit word per run of cycles (pio_enc.c): [1:0] = bit 0 sample this
+; cycle's first beat (q3), bit 1 the previous cycle's second beat (q1);
+; [17:2] repeats. 8 SM cycles per CK on every path, like the other two.
+
+.pio_version 1   ; RP2350
+.program ddr3_smp
+.origin 0
+
+    jmp k0                  ; 0: nothing to sample                         c0
+    jmp k1                  ; 1: beat 0 only
+    jmp k2                  ; 2: beat 1 only
+    jmp k3                  ; 3: both
+k0:
+    out x, 16 [4]           ; c1..c5
+k0l:
+    jmp x-- k0r             ; c6
+public start:               ; (where the SM starts)
+    out pc, 2               ; c7
+k0r:
+    jmp k0l [6]             ; c7, c0..c5
+k1:
+    out x, 16 [3]           ; c1..c4
+k1l:
+    jmp x-- k1r             ; c5
+    in pins, 10             ; c6: q3, beat 0
+    out pc, 2               ; c7
+k1r:
+    in pins, 10             ; c6
+    jmp k1l [5]             ; c7, c0..c4
+k2:
+    out x, 16               ; c1
+    in pins, 10 [4]         ; c2: q1, beat 1; c3..c6
+    out pc, 2               ; c7
+k3:
+    out x, 16               ; c1
+k3a:
+    in pins, 10 [2]         ; c2: q1, beat 1; c3, c4
+k3l:
+    jmp x-- k3r             ; c5
+    in pins, 10             ; c6: q3, beat 0
+    out pc, 2               ; c7
+k3r:
+    in pins, 10             ; c6
+    jmp k3a [2]             ; c7, c0, c1
