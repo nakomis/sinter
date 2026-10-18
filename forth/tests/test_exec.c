@@ -133,6 +133,8 @@ static int64_t ref_binary(const char *op, int64_t a, int64_t b, int *div0)
     if (!strcmp(op, "<>"))  return a != b ? -1 : 0;
     if (!strcmp(op, "<"))   return a < b ? -1 : 0;
     if (!strcmp(op, ">"))   return a > b ? -1 : 0;
+    if (!strcmp(op, "lshift")) return ub >= 64 ? 0 : wrap(ua << ub);
+    if (!strcmp(op, "rshift")) return ub >= 64 ? 0 : wrap(ua >> ub);
     return 0x5EED;
 }
 
@@ -153,7 +155,7 @@ static void check_operators(void)
 {
     static const char *const binary[] = {
         "+", "-", "*", "/", "mod", "min", "max", "and", "or", "xor",
-        "=", "<>", "<", ">",
+        "=", "<>", "<", ">", "lshift", "rshift",
     };
     static const char *const unary[] = {
         "negate", "abs", "1+", "1-", "invert", "0=", "0<",
@@ -267,6 +269,27 @@ static void check_programs(void)
                   "  0 1000 2 do i 256 + c@ + loop ;\n"
                   "sieve result!", 168);
     expect_result(mandelbrot_src, mandelbrot_reference());
+
+    /* Slice 2 (SINT-104). */
+    expect_result("1 63 lshift 63 rshift 1 1 lshift 1 rshift + result!", 2);
+    expect_result("0 3 0 do 4 0 do j 10 * i + + loop loop result!", 138);
+    expect_result("0 10 0 do i + 3 +loop result!", 18);        /* 0 3 6 9 */
+    expect_result("0 0 10 do i + -1 +loop result!", 55);       /* 10 .. 0 */
+    expect_result("0 0 10 do i + -3 +loop result!", 22);       /* 10 7 4 1 */
+    /* Starting at the limit, a negative step crosses it at once. */
+    expect_result("0 7 7 do 1+ -5 +loop result!", 1);
+    expect_result("0 -9223372036854775808 9223372036854775807 do 1+ 4 +loop"
+                  " result!", 1);
+    expect_result("0 9223372036854775807 -9223372036854775808 do 1+"
+                  " 4611686018427387904 +loop result!", 4);
+    expect_result(": fib dup 2 < if exit then dup 1- recurse swap 2 - recurse"
+                  " + ; 20 fib result!", 6765);
+    expect_result(": fact dup 1 > if dup 1- recurse * then ; 20 fact result!",
+                  2432902008176640000LL);
+    /* exit from inside nested loops leaves no loop frames behind. */
+    expect_result(": find ( n -- i*j ) 10 0 do 10 0 do dup i j * = if drop"
+                  " i j * exit then loop loop drop -1 ;"
+                  " 0 >r 42 find r> + result!", 42);
 }
 
 static void check_memory(void)
