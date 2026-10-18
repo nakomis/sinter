@@ -34,7 +34,7 @@ void test_errors(void)
     expect_error("(do)", FORTH_ERR_UNKNOWN_WORD, 1, 1, "'(do)'");
     expect_error("1 2 3.5", FORTH_ERR_UNKNOWN_WORD, 1, 5, "'3.5'");
     expect_error("0x", FORTH_ERR_UNKNOWN_WORD, 1, 1, "'0x'");
-    /* A definition is not visible inside itself (no recursion yet). */
+    /* A definition is not visible inside itself (use `recurse`). */
     expect_error(": f f ;", FORTH_ERR_UNKNOWN_WORD, 1, 5, "'f'");
 
     expect_error("9223372036854775808", FORTH_ERR_NUMBER_RANGE, 1, 1,
@@ -56,6 +56,13 @@ void test_errors(void)
                  "'repeat' without a matching 'while'");
     expect_error(": f loop ;", FORTH_ERR_CONTROL_MISMATCH, 1, 5,
                  "'loop' without a matching 'do'");
+    expect_error(": f 1 +loop ;", FORTH_ERR_CONTROL_MISMATCH, 1, 7,
+                 "'+loop' without a matching 'do'");
+    expect_error("1 exit", FORTH_ERR_CONTROL_MISMATCH, 1, 3,
+                 "'exit' outside a colon definition");
+    expect_error("recurse", FORTH_ERR_CONTROL_MISMATCH, 1, 1,
+                 "'recurse' outside a colon definition");
+    expect_error(": exit ;", FORTH_ERR_BAD_NAME, 1, 3, "reserved");
     expect_error(": f 1 if begin then ;", FORTH_ERR_CONTROL_MISMATCH, 1, 16,
                  "'then' without a matching 'if'");
     expect_error(": f do if loop ;", FORTH_ERR_CONTROL_MISMATCH, 1, 11,

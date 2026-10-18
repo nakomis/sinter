@@ -1,4 +1,4 @@
-# Sinter Forth compiler (SINT-25, slice 1)
+# Sinter Forth compiler (SINT-25, SINT-104)
 
 A subroutine-threaded compiler from a small Forth dialect to x86-64
 machine code, written as a plain C11 library with no dependencies beyond
@@ -63,7 +63,8 @@ if (forth_compile(&ctx, src, src_len, image, sizeof image) != FORTH_OK) {
 
 ## The dialect
 
-This is the starting subset from §4 of the design note, and nothing more.
+This is the subset from §4 of the design note (slice 1 plus the slice 2
+additions), and nothing more.
 The LLM is told to stay inside it; anything else is a compile error that
 goes back to the LLM as feedback. All values are 64-bit signed cells.
 
@@ -76,6 +77,7 @@ goes back to the LLM as feedback. All values are 64-bit signed cells.
 | | `min` `max` | `( a b -- c )` |
 | Logic | `and` `or` `xor` | `( a b -- c )` bitwise |
 | | `invert` | `( n -- ~n )` |
+| | `lshift` `rshift` | `( x u -- x' )` logical shift |
 | Comparison | `=` `<>` `<` `>` | `( a b -- flag )` signed |
 | | `0=` `0<` | `( n -- flag )` |
 | Memory | `@` `!` | `( addr -- x )` `( x addr -- )` 64-bit |
@@ -83,7 +85,9 @@ goes back to the LLM as feedback. All values are 64-bit signed cells.
 | Control | `if` `else` `then` | `if ( flag -- )` |
 | | `begin` `until` / `begin` `while` `repeat` | `until ( flag -- )` `while ( flag -- )` |
 | | `do` `loop` `i` | `do ( limit start -- )` `i ( -- index )` |
+| | `+loop` `j` | `+loop ( n -- )` `j ( -- outer-index )` |
 | Definitions | `:` *name* … `;` | |
+| | `exit` `recurse` | return early; call the current definition |
 | Result | `result!` | `( x -- )` store the program's answer |
 | Literals | `42` `-7` `$ff` `0xFF` `-$10` | `( -- n )` |
 
@@ -111,10 +115,16 @@ single pass through a small control-flow stack.
   keep their own data in 0x40–0x7FF; see the region layout below.
 - **`do … loop`** runs from `start` up to `limit - 1` and always runs the
   body at least once, as in standard Forth, so `0 0 do` runs 2⁶⁴ times.
-  `i` is the innermost loop index. There is no `j`, `leave`, `?do` or
-  `+loop` yet; keep an outer index in memory if you need one.
-- **Definitions** become visible after their `;`, so there is no
-  recursion yet. Redefining a word shadows the old meaning for code
+  `i` is the innermost loop index and `j` the next one out (neither is
+  right if the loop body has items of its own on the return stack).
+  `n +loop` stops when the index crosses from `limit - 1` to `limit` or
+  back, so `0 10 do … -1 +loop` runs i = 10 down to 0. No `leave`/`?do`.
+- **Shifts** are logical, and give 0 for counts of 64 or more (unsigned).
+- **Definitions** become visible after their `;`; use `recurse` to call
+  the definition being compiled. `exit` returns from the current
+  definition, dropping any `do` loop frames it is inside first (so
+  there is no `unloop`); anything the program pushed with `>r` must
+  already be gone. `exit` and `recurse` are errors outside a definition. Redefining a word shadows the old meaning for code
   compiled afterwards; control words, `:` and `;` cannot be redefined.
 - **`result!`** stores the value, sets the done flag and reads the flag
   back (the posted-write readback fence from §4 of the PCI note). It can
@@ -270,17 +280,19 @@ work this way.
 
 Not in this slice, by design:
 
-- **ESP-IDF integration**: the library is ready to drop into a component
-  (no heap, no I/O, context in caller-owned storage), but nothing under
-  `embedded/esp32/` uses it yet.
+- **The orchestrator**: `forth/CMakeLists.txt` makes this directory an
+  ESP-IDF component (`REQUIRES forth`), and `embedded/esp32/` is a
+  minimal esp32s3 project that pulls it in through
+  `EXTRA_COMPONENT_DIRS` and compiles a fixed program in `app_main`
+  (`idf.py build` there). The Ollama client and retry loop come later.
 - **The PCI BAR write path**: copying the image to `BAR + 0x1000`, the
   status-word handshake and the kernel-side caller (SINT-95). The host
   harness stands in for all of it.
 - **Floating point, strings and output words** (`."`, `emit` and so on).
   Results come back through the region, and Mandelbrot works in fixed
   point.
-- **More words**: `j`, `leave`, `?do`, `+loop`, `exit`, `recurse`,
-  shifts, double-cell arithmetic, `variable`/`constant`/`create`. Each
+- **More words**: `leave`, `?do`, double-cell arithmetic,
+  `variable`/`constant`/`create`. Each
   should arrive when a workload needs it (§1 and §7 of the design note).
 - **Runtime stack checking** and **inlining** of primitives: the design
   note's "native inlining" upgrade path. The table already separates the

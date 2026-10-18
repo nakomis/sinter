@@ -80,6 +80,19 @@ Notably absent until proven needed: floating point (Mandelbrot can be
 fixed-point first), strings, double-cell arithmetic, `."`-style output
 (results come back through the result region, not a terminal).
 
+**Slice 2 (SINT-104)** adds the words LLM-written loops and recursion
+reach for first, all of which fit the existing control-flow stack:
+
+- **Loops:** `j` (outer index), `+loop` (any step, either direction;
+  ends on crossing the limit-1/limit boundary, as in ANS Forth)
+- **Definitions:** `exit` (also drops any enclosing loop frames, so no
+  `unloop` is needed), `recurse`
+- **Logic:** `lshift rshift` (logical; a count of 64 or more gives 0)
+
+New primitives go at the end of the word table, so earlier offsets stay
+put. Deferred: `leave` and `?do` (a forward-branch list per loop), and
+`constant`/`variable` (interpreter state or reserved region space).
+
 ## 5. What the ESP32 actually emits
 
 1. Copy the precompiled primitive blob to `BAR + 0x1000`.

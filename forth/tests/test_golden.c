@@ -17,6 +17,10 @@
 #define CMP(cc) "31 c0 48 39 5d 00 0f " cc " c0 48 f7 d8 48 89 c3 48 83 c5 08 c3"
 #define CMP_ASM(cc) "xor eax,eax|cmp QWORD PTR [rbp+0x0],rbx|" cc " al|" \
                     "neg rax|mov rbx,rax|add rbp,0x8|ret"
+#define SHIFT(op) "48 89 d9 48 8b 5d 00 48 83 c5 08 48 d3 " op \
+                  " 31 c0 48 83 f9 40 48 0f 43 d8 c3"
+#define SHIFT_ASM(op) "mov rcx,rbx|mov rbx,QWORD PTR [rbp+0x0]|add rbp,0x8|" \
+                      op " rbx,cl|xor eax,eax|cmp rcx,0x40|cmovae rbx,rax|ret"
 
 const prim_golden prim_goldens[] = {
     { "dup", "48 83 ed 08 48 89 5d 00 c3",
@@ -109,6 +113,16 @@ const prim_golden prim_goldens[] = {
     { "(loop)", "49 8b 04 24 48 83 c0 01 49 89 04 24 49 3b 44 24 08 c3",
       "mov rax,QWORD PTR [r12]|add rax,0x1|mov QWORD PTR [r12],rax|"
       "cmp rax,QWORD PTR [r12+0x8]|ret" },
+    { "j", "48 83 ed 08 48 89 5d 00 49 8b 5c 24 10 c3",
+      "sub rbp,0x8|mov QWORD PTR [rbp+0x0],rbx|"
+      "mov rbx,QWORD PTR [r12+0x10]|ret" },
+    { "lshift", SHIFT("e3"), SHIFT_ASM("shl") },
+    { "rshift", SHIFT("eb"), SHIFT_ASM("shr") },
+    { "(+loop)", "49 8b 04 24 48 8d 14 18 49 89 14 24 49 2b 44 24 08 "
+                 "48 0f ba f8 3f 48 01 d8 48 8b 5d 00 48 8d 6d 08 c3",
+      "mov rax,QWORD PTR [r12]|lea rdx,[rax+rbx*1]|mov QWORD PTR [r12],rdx|"
+      "sub rax,QWORD PTR [r12+0x8]|btc rax,0x3f|add rax,rbx|"
+      "mov rbx,QWORD PTR [rbp+0x0]|lea rbp,[rbp+0x8]|ret" },
 };
 const size_t prim_golden_count = sizeof prim_goldens / sizeof prim_goldens[0];
 
@@ -314,6 +328,24 @@ static void check_control_shapes(void)
     check_def(": t if if 1 then else 2 then ;", "t",
               ZBRANCH "23 00 00 00 " ZBRANCH "0d 00 00 00 "
               PUSH "bb 01 00 00 00 e9 0d 00 00 00 " PUSH "bb 02 00 00 00 c3");
+    check_def(": t do i 2 +loop ;", "t",
+              "call:(do) call:i " PUSH "bb 02 00 00 00 call:(+loop) "
+              "0f 81 e3 ff ff ff 4d 8d 64 24 10 c3");
+    /* exit drops the frame of each enclosing loop before returning. */
+    check_def(": t exit ;", "t", "c3 c3");
+    check_def(": t do do exit loop loop ;", "t",
+              "call:(do) call:(do) 4d 8d 64 24 10 4d 8d 64 24 10 c3 "
+              "call:(loop) 0f 85 ea ff ff ff 4d 8d 64 24 10 "
+              "call:(loop) 0f 85 d5 ff ff ff 4d 8d 64 24 10 c3");
+    /* recurse calls the start of the definition being compiled. */
+    {
+        forth_ctx ctx;
+        const uint8_t *img = compile_ok(": f recurse ;", &ctx);
+        const forth_def *f = img ? forth_find_def(&ctx, "f") : NULL;
+        CHECK(f && img[f->start] == 0xE8 &&
+                  rel32_at(img + f->start + 1) == -5,
+              "recurse does not call its own definition");
+    }
     /* A call to an earlier colon definition targets its first byte. */
     {
         forth_ctx ctx;

@@ -22,6 +22,7 @@
  * BAR on the rig, where a locked access becomes a bus lock.
  */
 #include <stddef.h>
+#include <string.h>
 
 #include "internal.h"
 
@@ -292,6 +293,48 @@ static const uint8_t p_loop[] = {
     0xC3,                                   /* ret                      */
 };
 
+/* ---- Slice 2 (SINT-104) ------------------------------------------------- */
+
+/* ( -- index ) of the next loop out: the loop frame below the innermost. */
+static const uint8_t p_j[] = {
+    0x48, 0x83, 0xED, 0x08,                 /* sub  rbp, 8              */
+    0x48, 0x89, 0x5D, 0x00,                 /* mov  [rbp], rbx          */
+    0x49, 0x8B, 0x5C, 0x24, 0x10,           /* mov  rbx, [r12+16]       */
+    0xC3,                                   /* ret                      */
+};
+
+/* ( x u -- x' ): logical shift by u bits. x86 masks the count to 6 bits,
+ * so counts of 64 or more (unsigned) are caught and give 0. */
+#define SHIFT(modrm)                                                       \
+    0x48, 0x89, 0xD9,                       /* mov  rcx, rbx            */ \
+    0x48, 0x8B, 0x5D, 0x00,                 /* mov  rbx, [rbp]          */ \
+    0x48, 0x83, 0xC5, 0x08,                 /* add  rbp, 8              */ \
+    0x48, 0xD3, modrm,                      /* shl/shr rbx, cl          */ \
+    0x31, 0xC0,                             /* xor  eax, eax            */ \
+    0x48, 0x83, 0xF9, 0x40,                 /* cmp  rcx, 64             */ \
+    0x48, 0x0F, 0x43, 0xD8,                 /* cmovae rbx, rax          */ \
+    0xC3                                    /* ret                      */
+static const uint8_t p_lshift[] = { SHIFT(0xE3) };  /* shl */
+static const uint8_t p_rshift[] = { SHIFT(0xEB) };  /* shr */
+#undef SHIFT
+
+/* ( n -- ) Add n to the loop index. The loop ends when the index crosses
+ * the boundary between limit-1 and limit in either direction: biasing
+ * index-limit by 2^63 puts that boundary where a signed add overflows,
+ * so the caller follows the call with `jno <loop body>`. Only the final
+ * add sets flags; mov, lea and ret leave them alone. */
+static const uint8_t p_plus_loop[] = {
+    0x49, 0x8B, 0x04, 0x24,                 /* mov  rax, [r12]          */
+    0x48, 0x8D, 0x14, 0x18,                 /* lea  rdx, [rax+rbx]      */
+    0x49, 0x89, 0x14, 0x24,                 /* mov  [r12], rdx          */
+    0x49, 0x2B, 0x44, 0x24, 0x08,           /* sub  rax, [r12+8]        */
+    0x48, 0x0F, 0xBA, 0xF8, 0x3F,           /* btc  rax, 63             */
+    0x48, 0x01, 0xD8,                       /* add  rax, rbx            */
+    0x48, 0x8B, 0x5D, 0x00,                 /* mov  rbx, [rbp]          */
+    0x48, 0x8D, 0x6D, 0x08,                 /* lea  rbp, [rbp+8]        */
+    0xC3,                                   /* ret                      */
+};
+
 /* ---- Control flow (compile-time words) ---------------------------------- */
 
 static forth_status push_control(forth_ctx *ctx, int kind, size_t pos)
@@ -417,26 +460,81 @@ static forth_status c_do(forth_ctx *ctx, const forth_word *w)
     return push_control(ctx, FORTH_CF_DO, ctx->len);
 }
 
+/* Discard a loop frame (what other Forths call UNLOOP). */
+static const uint8_t unloop[] = {
+    0x4D, 0x8D, 0x64, 0x24, 0x10,           /* lea  r12, [r12+16]       */
+};
+
+/* Close a do loop: call the hidden step helper `helper`, branch back to
+ * the body on condition `jcc` (2 opcode bytes), then drop the frame. */
+static forth_status close_loop(forth_ctx *ctx, const char *helper,
+                               const uint8_t *jcc)
+{
+    forth_control dest = { 0 };
+    forth_status st;
+    const forth_word *h = forth_word_lookup(helper, strlen(helper), 1);
+    if ((st = pop_control(ctx, FORTH_CF_DO, "do", &dest)) != FORTH_OK ||
+        (st = forth_emit_call(ctx, (size_t)forth_word_offset(h))) !=
+            FORTH_OK ||
+        (st = forth_emit_rel32(ctx, jcc, 2, dest.pos, NULL)) != FORTH_OK) {
+        return st;
+    }
+    return forth_emit(ctx, unloop, sizeof unloop);
+}
+
 static forth_status c_loop(forth_ctx *ctx, const forth_word *w)
 {
     static const uint8_t jne[] = { 0x0F, 0x85 };     /* jne rel32 */
-    static const uint8_t unloop[] = {
-        0x4D, 0x8D, 0x64, 0x24, 0x10,       /* lea  r12, [r12+16]       */
-    };
-    forth_control dest = { 0 };
+    (void)w;
+    return close_loop(ctx, "(loop)", jne);
+}
+
+static forth_status c_plus_loop(forth_ctx *ctx, const forth_word *w)
+{
+    static const uint8_t jno[] = { 0x0F, 0x81 };     /* jno rel32 */
+    (void)w;
+    return close_loop(ctx, "(+loop)", jno);
+}
+
+/* Fail unless compiling a colon definition. */
+static forth_status need_def(forth_ctx *ctx)
+{
+    if (ctx->in_def) {
+        return FORTH_OK;
+    }
+    return forth_fail(ctx, FORTH_ERR_CONTROL_MISMATCH,
+                      "'%.*s' outside a colon definition",
+                      (int)ctx->tok_len, ctx->tok);
+}
+
+/* Return from the current definition, first dropping the frame of every
+ * do loop it is inside, so `exit` in a loop needs no `unloop`. */
+static forth_status c_exit(forth_ctx *ctx, const forth_word *w)
+{
+    static const uint8_t ret[] = { 0xC3 };
     forth_status st;
     (void)w;
-    if ((st = pop_control(ctx, FORTH_CF_DO, "do", &dest)) != FORTH_OK ||
-        (st = forth_emit_call(ctx, (size_t)forth_word_offset(
-             forth_word_lookup("(loop)", 6, 1)))) != FORTH_OK) {
+    if ((st = need_def(ctx)) != FORTH_OK) {
         return st;
     }
-    if ((st = forth_emit_rel32(ctx, jne, sizeof jne, dest.pos, NULL)) !=
-        FORTH_OK) {
+    for (size_t i = 0; i < ctx->ncontrol; i++) {
+        if (ctx->control[i].kind == FORTH_CF_DO &&
+            (st = forth_emit(ctx, unloop, sizeof unloop)) != FORTH_OK) {
+            return st;
+        }
+    }
+    return forth_emit(ctx, ret, sizeof ret);
+}
+
+/* Call the definition being compiled. */
+static forth_status c_recurse(forth_ctx *ctx, const forth_word *w)
+{
+    forth_status st;
+    (void)w;
+    if ((st = need_def(ctx)) != FORTH_OK) {
         return st;
     }
-    /* Discard the loop frame (what other Forths call UNLOOP). */
-    return forth_emit(ctx, unloop, sizeof unloop);
+    return forth_emit_call(ctx, ctx->pending.start);
 }
 
 /* ---- The table ----------------------------------------------------------
@@ -504,6 +602,14 @@ const forth_word forth_words[] = {
     COMPILE("loop", c_loop),
     COMPILE(":", forth_compile_colon),
     COMPILE(";", forth_compile_semicolon),
+    /* Slice 2 (SINT-104): appended so earlier offsets stay put. */
+    PRIM("j", p_j),
+    PRIM("lshift", p_lshift),
+    PRIM("rshift", p_rshift),
+    HIDDEN("(+loop)", p_plus_loop),
+    COMPILE("+loop", c_plus_loop),
+    COMPILE("exit", c_exit),
+    COMPILE("recurse", c_recurse),
 };
 
 const size_t forth_word_count = sizeof forth_words / sizeof forth_words[0];
