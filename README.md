@@ -1,5 +1,7 @@
 # Sinter — Combining hardware in cruel and unusual ways
 
+<img src="docs/logo.png" alt="sinter logo" width="200" align="right"/>
+
 ## Support
 
 If you find this useful, please consider buying me a coffee:
