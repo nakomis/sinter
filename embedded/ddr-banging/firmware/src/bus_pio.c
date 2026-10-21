@@ -6,6 +6,7 @@
 #include "hardware/pio.h"
 #include "pico/time.h"
 
+#include "ddr3_cap.pio.h"
 #include "ddr3_cmd.pio.h"
 #include "ddr3_smp.pio.h"
 #include "ddr3_wr.pio.h"
@@ -27,8 +28,9 @@
 #define DIR_MASK64 ((1ull << PIN_DIR_DQ) | (1ull << PIN_DIR_DQS))
 
 static uint32_t cmd_w[STREAM_CAP], wr_w[STREAM_CAP], smp_w[STREAM_CAP];
-static uint off_cmd, off_wr, off_smp;
-static int ch_cmd, ch_wr, ch_smp, ch_rx;
+static uint off_cmd, off_wr, off_smp, off_cap;
+static int ch_cmd, ch_wr, ch_smp, ch_rx, ch_cap;
+#define CAP_SM 1   // PIO2 SM1: the self-check's capture (pio_check.h)
 static uint32_t tck_ns, div;
 static const char *error;
 
@@ -48,6 +50,7 @@ static uint32_t pio_set_tck(uint32_t ns)
     pio_sm_set_clkdiv_int_frac8(CMD_PIO, SM, div, 0);
     pio_sm_set_clkdiv_int_frac8(WR_PIO, SM, div, 0);
     pio_sm_set_clkdiv_int_frac8(SMP_PIO, SM, div, 0);
+    pio_sm_set_clkdiv_int_frac8(SMP_PIO, CAP_SM, div, 0);
     return tck_ns;
 }
 
@@ -63,7 +66,7 @@ void bus_pio_init(void)
     sm_config_set_out_pins(&c, PIN_CA_BASE + CA_CKE, PIOENC_CA_BITS);
     sm_config_set_sideset_pins(&c, PIN_CA_BASE + CA_CK);
     sm_config_set_out_shift(&c, true, true, 32);
-    pio_sm_init(CMD_PIO, SM, off_cmd, &c);
+    pio_sm_init(CMD_PIO, SM, off_cmd + ddr3_cmd_offset_start, &c);
 
     off_wr = pio_add_program(WR_PIO, &ddr3_wr_program);   // .origin 0
     c = ddr3_wr_program_get_default_config(off_wr);
@@ -79,10 +82,18 @@ void bus_pio_init(void)
     sm_config_set_out_shift(&c, true, true, PIOENC_WORD_BITS);
     pio_sm_init(SMP_PIO, SM, off_smp + ddr3_smp_offset_start, &c);
 
+    pio_sm_claim(SMP_PIO, CAP_SM);
+    off_cap = pio_add_program(SMP_PIO, &ddr3_cap_program);   // after the sampler
+    c = ddr3_cap_program_get_default_config(off_cap);
+    sm_config_set_in_pins(&c, 0);
+    sm_config_set_in_shift(&c, false, true, 32);
+    pio_sm_init(SMP_PIO, CAP_SM, off_cap, &c);
+
     ch_cmd = dma_claim_unused_channel(true);
     ch_wr = dma_claim_unused_channel(true);
     ch_smp = dma_claim_unused_channel(true);
     ch_rx = dma_claim_unused_channel(true);
+    ch_cap = dma_claim_unused_channel(true);
     pio_set_tck(1000);
 }
 
@@ -110,13 +121,18 @@ void bus_pio_give_pins(void)
 }
 
 // Disabled, FIFOs and shift registers empty, at its starting instruction
+static void rewind_sm(PIO p, uint sm, uint pc)
+{
+    pio_sm_set_enabled(p, sm, false);
+    pio_sm_clear_fifos(p, sm);
+    pio_sm_restart(p, sm);
+    pio_sm_exec(p, sm, pio_encode_jmp(pc));
+    p->fdebug = (1u << (PIO_FDEBUG_TXSTALL_LSB + sm)) | (1u << (PIO_FDEBUG_RXSTALL_LSB + sm));
+}
+
 static void rewind(PIO p, uint pc)
 {
-    pio_sm_set_enabled(p, SM, false);
-    pio_sm_clear_fifos(p, SM);
-    pio_sm_restart(p, SM);
-    pio_sm_exec(p, SM, pio_encode_jmp(pc));
-    p->fdebug = (1u << (PIO_FDEBUG_TXSTALL_LSB + SM)) | (1u << (PIO_FDEBUG_RXSTALL_LSB + SM));
+    rewind_sm(p, SM, pc);
 }
 
 static void feed(int ch, PIO p, const uint32_t *words, size_t n)
@@ -146,10 +162,12 @@ static void stop(bool failed)
     pio_sm_set_enabled(CMD_PIO, SM, false);
     pio_sm_set_enabled(WR_PIO, SM, false);
     pio_sm_set_enabled(SMP_PIO, SM, false);
+    pio_sm_set_enabled(SMP_PIO, CAP_SM, false);
     abort_channel(ch_cmd);
     abort_channel(ch_wr);
     abort_channel(ch_smp);
     abort_channel(ch_rx);
+    abort_channel(ch_cap);
     if (failed) {
         // wherever it stopped: RP2350 off DQ/DQS first, then the translators
         // back to DRAM -> RP2350, so nothing fights whatever comes next
@@ -166,7 +184,8 @@ static bool underran(PIO p, int ch)
     return stalled(p) && (dma_channel_is_busy(ch) || !pio_sm_is_tx_fifo_empty(p, SM));
 }
 
-static bool pio_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_samples)
+static bool run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_samples,
+                uint32_t *capture, size_t n_capture)
 {
     error = NULL;
     bool o1, o2, o3;
@@ -184,9 +203,18 @@ static bool pio_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_sam
         return false;
     }
 
-    rewind(CMD_PIO, off_cmd);   // its one-off start-up nop
+    rewind(CMD_PIO, off_cmd + ddr3_cmd_offset_start);   // its one-off start-up pull + nop
     rewind(WR_PIO, off_wr + ddr3_wr_offset_start);
     rewind(SMP_PIO, off_smp + ddr3_smp_offset_start);
+    if (capture) {
+        rewind_sm(SMP_PIO, CAP_SM, off_cap);
+        dma_channel_config c = dma_channel_get_default_config(ch_cap);
+        channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
+        channel_config_set_read_increment(&c, false);
+        channel_config_set_write_increment(&c, true);
+        channel_config_set_dreq(&c, pio_get_dreq(SMP_PIO, CAP_SM, false));
+        dma_channel_configure(ch_cap, &c, capture, &SMP_PIO->rxf[CAP_SM], n_capture, true);
+    }
 
     // samples: two beats per sampled cycle, 16 bits each, straight into bus_sample_t
     if (want) {
@@ -210,7 +238,8 @@ static bool pio_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_sam
     // SM 0 of PIO0, of PIO1 (next) and PIO2 (previous, wrapping round),
     // enabled and their dividers restarted on one cycle
     uint64_t t0 = time_us_64();
-    pio_enable_sm_multi_mask_in_sync(CMD_PIO, 1u << SM, 1u << SM, 1u << SM);
+    uint32_t prev = (1u << SM) | (capture ? 1u << CAP_SM : 0);
+    pio_enable_sm_multi_mask_in_sync(CMD_PIO, prev, 1u << SM, 1u << SM);
 
     // The three SMs are deterministic: the sequence takes exactly len x tCK
     // from the start. Done once that (plus two cycles' grace) has passed and
@@ -230,7 +259,8 @@ static bool pio_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_sam
             error = "a state machine ran dry mid-sequence (DMA underrun)";
             break;
         }
-        if (fed && now - t0 >= need_us && (!want || !dma_channel_is_busy(ch_rx))) {
+        if (fed && now - t0 >= need_us && (!want || !dma_channel_is_busy(ch_rx)) &&
+            (!capture || !dma_channel_is_busy(ch_cap))) {
             // every SM is now waiting for a word that will never come
             if (!stalled(CMD_PIO)) error = "command SM still running after its stream";
             break;
@@ -242,6 +272,17 @@ static bool pio_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_sam
     }
     stop(error != NULL);
     return error == NULL;
+}
+
+static bool pio_run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_samples)
+{
+    return run(s, samples, max_samples, NULL, 0);
+}
+
+bool bus_pio_run_captured(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_samples,
+                          uint32_t *capture, size_t n_capture)
+{
+    return run(s, samples, max_samples, capture, n_capture);
 }
 
 const bus_ops_t bus_pio_ops = { "pio (3 state machines + DMA)", pio_run, pio_tck, pio_set_tck };

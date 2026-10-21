@@ -23,12 +23,14 @@ typedef struct {
     size_t n_cmd, n_wr, n_smp;
     uint32_t *rx;                     // samples, one 10-bit word each
     size_t rx_cap;
+    uint32_t *capture;                // optional: GPIO 0-31 per SM cycle (PIO2 SM1)
+    size_t capture_cap;
 } pio_sim_streams_t;
 
 typedef struct {
     pioenc_timing_t timing;
     uint64_t cycles;                  // system clocks stepped
-    size_t cmd_used, wr_used, smp_used, rx_len;
+    size_t cmd_used, wr_used, smp_used, rx_len, capture_len;
 } pio_sim_result_t;
 
 // Play the streams in lock-step (PIO0/1/2 SM0, started on one cycle) for

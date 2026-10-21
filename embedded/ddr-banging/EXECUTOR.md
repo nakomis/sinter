@@ -29,7 +29,19 @@ Status (2026-10-15):
   for, runs on and reports the failures of whichever executor is selected.
   The host tests and the firmware share one clock rule
   (`pioenc_executor_timing`: round down to a whole divider).
-- **Next:** the bench checks (§7).
+- **Done: a self-check** (`selftest`, `src/pio_check.c`, PIO2 SM1 capture).
+  - Proven under epio, it runs on the bare board with nothing attached.
+  - It checks every pin on every SM cycle, plus a sampler loopback,
+    covering the three silicon unknowns below.
+  - It found a real bug: the writer and sampler started **one SM cycle
+    behind** the cmd SM. The cmd SM's OSR was filled by background autopull
+    during its start-up `nop`, while theirs filled on their first OUT.
+  - The DRAM model and JEDEC checker had missed it, because the data side
+    shifted as a whole, and 1/8 tCK of DQS-to-CK skew is within tDQSS.
+  - Every SM now starts with an explicit `pull block`, so alignment no longer
+    depends on autopull timing. The selftest pins the cycles exactly, and
+    reproduces the old skew (87 wrong SM cycles) if the `pull` is removed.
+- **Next:** the bench checks (§7). Runbook step 1.6 automates them.
 
 ## 1. The spec: bus_run's pin trace
 
@@ -140,9 +152,8 @@ sampler  [1:0]   bit 0: beat 0 this cycle (q3); bit 1: beat 1 of the previous cy
    - Then enable all three in sync, and wait until every stream is spent,
      every SM has stalled on its empty FIFO and every sample is in. Then stop.
    - A timeout of twice the expected time is a fault.
-3. **On the bench:** a `HARDWARE-CHECKS` pass, comparing the logic-analyser
-   capture with the emulator trace for one write run and one read run.
-   Check, on silicon:
+3. **On the bench:** `selftest` (runbook step 1.6), on the bare board. It
+   checks, on silicon:
    - the start-up alignment (§2);
    - that PIO0's PREV mask reaches PIO2 (the RP2350's wrap-round, which epio
      models);

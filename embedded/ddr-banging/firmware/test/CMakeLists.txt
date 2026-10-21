@@ -15,6 +15,7 @@ add_executable(run_tests
     test_pio_enc.c
     test_pio_cmd.c
     test_pio_data.c
+    test_pio_selftest.c
     pio_sim.c
     jedec.c
     dram_model.c
@@ -25,6 +26,7 @@ add_executable(run_tests
     ../src/link.c
     ../src/dram.c
     ../src/pio_enc.c
+    ../src/pio_check.c
     ../../proto/ddrlink.c
     ../../esp32-client/components/ddrbang/ddrbang.c
 )
@@ -62,7 +64,7 @@ ExternalProject_Add(pioasm_host
 set(PIOASM ${CMAKE_BINARY_DIR}/pioasm/pioasm)
 set(PIO_GEN ${CMAKE_BINARY_DIR}/pio)
 file(MAKE_DIRECTORY ${PIO_GEN})
-foreach(prog ddr3_cmd ddr3_wr ddr3_smp)
+foreach(prog ddr3_cmd ddr3_wr ddr3_smp ddr3_cap)
     add_custom_command(OUTPUT ${PIO_GEN}/${prog}.pio.h
         COMMAND ${PIOASM} -o c-sdk ${CMAKE_CURRENT_SOURCE_DIR}/../src/pio/${prog}.pio ${PIO_GEN}/${prog}.pio.h
         DEPENDS pioasm_host ${CMAKE_CURRENT_SOURCE_DIR}/../src/pio/${prog}.pio)

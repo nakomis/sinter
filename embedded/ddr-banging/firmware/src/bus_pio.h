@@ -6,6 +6,8 @@
 #define BUS_PIO_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "bus.h"
 
@@ -20,6 +22,11 @@ void bus_pio_init(void);
 // in self-refresh (between operations).
 void bus_pio_take_pins(void);
 void bus_pio_give_pins(void);
+
+// A run with the self-check's capture SM (PIO2 SM1) alongside: capture gets
+// GPIO 0-31 on each SM cycle from the synchronised start (pio_check.h).
+bool bus_pio_run_captured(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_samples,
+                          uint32_t *capture, size_t n_capture);
 
 // Why the last run failed, or NULL.
 const char *bus_pio_error(void);

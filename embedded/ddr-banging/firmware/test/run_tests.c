@@ -10,6 +10,7 @@ void test_jedec(void);
 void test_pio_enc(void);
 void test_pio_cmd(void);
 void test_pio_data(void);
+void test_pio_selftest(void);
 
 int main(void)
 {
@@ -21,6 +22,7 @@ int main(void)
     test_pio_enc();
     test_pio_cmd();
     test_pio_data();
+    test_pio_selftest();
     if (check_failures) {
         printf("%d check(s) failed\n", check_failures);
         return 1;
