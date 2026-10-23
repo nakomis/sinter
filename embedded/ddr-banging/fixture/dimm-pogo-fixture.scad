@@ -25,7 +25,7 @@
 part = "assembly";   // assembly | front | back | test | gauge
 
 // --- Things to measure / tune ---------------------------------------------
-hole_d          = 1.02;  // press fit for the P75 barrel (set from the test piece)
+hole_d          = 1.07;  // press fit for the P75 barrel (test piece, 2026-10-23: 1.07)
 plunger_exposed = 5.5;   // P75-B1 tip to barrel front, at rest (MEASURE on arrival)
 stroke          = 2.65;  // P75 full travel
 compression     = 1.3;   // working compression on the pad (~half stroke)
