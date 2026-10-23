@@ -147,6 +147,73 @@ Use the Core2350B's 3V3 pin for VCCA. Take VCCB from the bench supply at
 
 ---
 
+## Step 2b — SINT-101 breakout check (the channel board's translator)
+
+The SINT-101 board is a JLCPCB-assembled SN74AVC16T245 (TSSOP-48) on a
+DIP-48 footprint, 0.6" between rows, so it straddles a breadboard's centre
+gap. It is the translator the channel board uses, so this step finds out
+early whether the part does what DESIGN.md assumes. Its decoupling capacitors
+are already on the board, so you don't need to add any.
+
+Header pin numbers are the chip's own pin numbers (they're marked at the ends
+of each header). **J1** carries pins 1–24, the **B side (1.5 V)**; **J2**
+carries pins 48–25, the **A side (3.3 V)**:
+
+| J1 pin | | J2 pin | |
+|---|---|---|---|
+| 1 | 1DIR | 48 | 1OE# |
+| 2, 3 | 1B1, 1B2 | 47, 46 | 1A1, 1A2 |
+| 5, 6 | 1B3, 1B4 | 44, 43 | 1A3, 1A4 |
+| 8, 9 | 1B5, 1B6 | 41, 40 | 1A5, 1A6 |
+| 11, 12 | 1B7, 1B8 | 38, 37 | 1A7, 1A8 |
+| 13, 14 | 2B1, 2B2 | 36, 35 | 2A1, 2A2 |
+| 16, 17 | 2B3, 2B4 | 33, 32 | 2A3, 2A4 |
+| 19, 20 | 2B5, 2B6 | 30, 29 | 2A5, 2A6 |
+| 22, 23 | 2B7, 2B8 | 27, 26 | 2A7, 2A8 |
+| 24 | 2DIR | 25 | 2OE# |
+| 7, 18 | VCCB (1.5 V) | 42, 31 | VCCA (3.3 V) |
+| 4, 10, 15, 21 | GND | 45, 39, 34, 28 | GND |
+
+Each half (1x and 2x) has its own DIR and OE#. The board joins same-named
+pins, so one wire to each rail is enough.
+
+**Watch out:** 1DIR (pin 1) and 2DIR (pin 24) are on the 1.5 V header, but
+DIR and OE# are referenced to **VCCA**. Drive them with 3.3 V or GND, never
+1.5 V: 1.5 V is below the 3.3 V logic threshold, so the direction would be
+undefined.
+
+**Before power** (meter on Ω, board out of the breadboard): VCCA ↔ GND and
+VCCB ↔ GND both open (or slowly rising as the capacitors charge); pin 42 ↔
+pin 31 < 1 Ω; pin 7 ↔ pin 18 < 1 Ω. A short here is an assembly fault: don't
+power it, photograph it and tell Claude.
+
+**Supplies:** VCCA from the Core2350B's 3V3 pin. VCCB from the bench supply at
+**1.5 V, limited to 50 mA**. Tie 1OE# and 2OE# to GND (enabled).
+
+| Test | Set up | Expect |
+|---|---|---|
+| Idle current | Both rails on, both DIRs high, all 16 A inputs tied to GND | VCCB draws < 1 mA (the bench supply reads ~0) |
+| A→B high | 1DIR high, 1A1 to 3.3 V | 1B1 = 1.45–1.5 V |
+| A→B low | 1DIR high, 1A1 to GND | 1B1 < 0.05 V |
+| Every channel | Repeat for 1A2–1A8, then 2DIR high and 2A1–2A8 | The same |
+| B→A | 1DIR low, 1B1 to 1.5 V, then to GND | 1A1 = ~3.3 V, then ~0 V. Repeat on 2B1 with 2DIR low |
+| Disabled | 1OE# high | The 1B outputs float (the reading wanders, nothing solid) |
+
+When you set a DIR low, that half's B pins become inputs. Move the GND ties
+from its A pins to its B pins first, so nothing floats (see step 2's note).
+
+- **B reads 3.3 V:** VCCB isn't connected, or a supply is on the wrong
+  header. Switch off and check the wiring against the table.
+- **A dead channel:** note which one. The channel board uses every channel,
+  so a dead one there means a reflow or a replacement part.
+- **Tens of mA on VCCB:** an input is floating, or a DIR is at 1.5 V. Check
+  the ties before suspecting the chip.
+
+This doesn't test drive strength into a DRAM's termination. That waits for
+the channel board (DESIGN.md's open questions).
+
+---
+
 ## Step 3 — debug setup (M4), optional for the early steps
 
 The early steps (SPD, `walk`) need only the meter. Set this up before step 9,
