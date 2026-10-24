@@ -22,7 +22,7 @@
 //
 // Render a part:  openscad -D 'part="front"' -o front.stl dimm-pogo-fixture.scad
 
-part = "assembly";   // assembly | front | back | test | gauge
+part = "assembly";   // assembly | front | back | test | gauge | caps
 
 // --- Things to measure / tune ---------------------------------------------
 hole_d          = 1.07;  // press fit for the P75 barrel (test piece, 2026-10-23: 1.07)
@@ -33,6 +33,9 @@ row_z           = [0.75, 2.03];  // pin rows above the bottom edge (odd, even pi
 pad_top         = 2.4;   // top of the gold pads above the edge (measured on the Samsung M391B5673FH0)
 clear_above     = 4.4;   // jaw face height before it steps back to clear SMD parts
 holes           = "needed";  // "needed" (our signals only) or "all" 240
+pin_len         = 16.0;  // P75 tip to tail, at rest (measured)
+pcb_t           = 1.6;   // jaw PCB thickness
+loose_d         = 1.12;  // slides freely on a P75 barrel (test piece: 1.10 loose)
 
 // --- DIMM -----------------------------------------------------------------
 board_len  = 133.35;
@@ -179,6 +182,26 @@ module gauge() {
     }
 }
 
+// Tail caps: set every pin's depth from the PCB side. Lay a cap on the back of
+// the soldered-to-be PCB over a pin cluster, push each tail down flush with the
+// cap's top (moves the barrel, not the plunger), then lift the cap off. The tail
+// left standing is exactly what puts the tip compression + c proud of the jaw.
+// Loose holes, so lifting off doesn't drag the pins; one block per cluster keeps
+// clear of the bolts and headers.
+tail = pin_len - (compression + c) - W - pcb_t;
+front_clusters = [[1, 11], [50, 83], [117, 120]];
+back_clusters  = [[121, 130], [168, 202], [236, 240]];
+
+module tail_caps(pins, clusters) {
+    for (r = clusters)
+        linear_extrude(tail) difference() {
+            translate([pad_x(r[0]) - 1.5, row_z[0] - 1.5])
+                square([pad_x(r[1]) - pad_x(r[0]) + 3, row_z[1] - row_z[0] + 3]);
+            for (n = pins) if (n >= r[0] && n <= r[1])
+                translate([pad_x(n), pad_z(n)]) circle(d = loose_d);
+        }
+}
+
 module dimm_ghost() {
     %difference() {
         translate([0, -board_t / 2, 0]) cube([board_len, board_t, 30.5]);
@@ -190,6 +213,7 @@ if (part == "front")    front_jaw();
 if (part == "back")     back_jaw();
 if (part == "test")     test_piece();
 if (part == "gauge")    gauge();
+if (part == "caps")     { tail_caps(front_pins(), front_clusters); translate([0, 8, 0]) tail_caps(back_pins(), back_clusters); }
 if (part == "assembly") { front_jaw(); color("SteelBlue") back_jaw(); dimm_ghost(); }
 
 // Sanity checks
@@ -205,3 +229,5 @@ if (part == "section")
         union() { front_jaw(); back_jaw(); }
         translate([pad_x(3) - 0.2, -30, -30]) cube([pad_x(4) - pad_x(3) + 0.4, 60, 60]);
     }
+echo(str("Tail beyond the PCB (tail-cap thickness): ", tail, " mm; tail-cap diagonal web: ", sqrt(pitch * pitch + pow(row_z[1] - row_z[0], 2)) - loose_d, " mm"));
+assert(tail > 1, "Pins too short for the jaw + PCB stack");
