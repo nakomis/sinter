@@ -203,6 +203,10 @@ static bool run(const ddr3_seq_t *s, bus_sample_t *samples, unsigned max_samples
         return false;
     }
 
+    // DQ's output latch still holds the last run's final beat, and the writer
+    // turns DQ round one SM cycle before it writes new data: start from 0 so
+    // every run's preamble is the same (DQ is an input here, so nothing moves)
+    pio_sm_set_pins_with_mask64(WR_PIO, SM, 0, 0xFFull << PIN_DQ0);
     rewind(CMD_PIO, off_cmd + ddr3_cmd_offset_start);   // its one-off start-up pull + nop
     rewind(WR_PIO, off_wr + ddr3_wr_offset_start);
     rewind(SMP_PIO, off_smp + ddr3_smp_offset_start);
