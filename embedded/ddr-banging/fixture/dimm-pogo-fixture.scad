@@ -192,14 +192,20 @@ tail = pin_len - (compression + c) - W - pcb_t;
 front_clusters = [[1, 11], [50, 83], [117, 120]];
 back_clusters  = [[121, 130], [168, 202], [236, 240]];
 
+// Printed flat on the plate (no supports, so both faces stay flat); the
+// over-cured bottom layers would close the holes up, so they open out there.
+// That face goes on the PCB.
 module tail_caps(pins, clusters) {
-    for (r = clusters)
+    for (r = clusters) difference() {
         linear_extrude(tail) difference() {
             translate([pad_x(r[0]) - 1.5, row_z[0] - 1.5])
                 square([pad_x(r[1]) - pad_x(r[0]) + 3, row_z[1] - row_z[0] + 3]);
             for (n = pins) if (n >= r[0] && n <= r[1])
                 translate([pad_x(n), pad_z(n)]) circle(d = loose_d);
         }
+        for (n = pins) if (n >= r[0] && n <= r[1])
+            translate([pad_x(n), pad_z(n), -0.01]) cylinder(d1 = 1.4, d2 = loose_d, h = 0.4);
+    }
 }
 
 module dimm_ghost() {
